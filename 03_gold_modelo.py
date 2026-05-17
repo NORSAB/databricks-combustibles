@@ -1,4 +1,8 @@
 # Databricks notebook source
+# /// script
+# [tool.databricks.environment]
+# environment_version = "2"
+# ///
 # MAGIC %md
 # MAGIC # 03 - Capa GOLD: Modelo analitico
 # MAGIC
@@ -287,3 +291,8 @@ spark.sql(f"USE CATALOG {CATALOG}")
 # MAGIC 1. **Dashboard Databricks:** menu lateral -> Dashboards -> New Dashboard -> conectar a `v_precios_completo`.
 # MAGIC 2. **Power BI:** Get Data -> Azure Databricks -> SQL Warehouse -> seleccionar `gold.v_precios_completo`.
 # MAGIC 3. **Tableau:** Connect -> Databricks -> usar las mismas credenciales.
+
+# COMMAND ----------
+
+# sync fix
+
