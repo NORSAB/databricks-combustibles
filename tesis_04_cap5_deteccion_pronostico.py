@@ -230,3 +230,142 @@ if resultados_quiebres:
      .option("overwriteSchema", "true")
      .saveAsTable(f"{CATALOG}.gold.tesis_cap5_quiebres_estructurales"))
     print("Quiebres estructurales guardados en tesis_cap5_quiebres_estructurales")
+
+# COMMAND ----------
+# MAGIC %md
+# MAGIC ## 6. Test Estadístico: K-Medias vs Cuantiles (para Tabla de Evaluación Final)
+
+# COMMAND ----------
+
+from scipy import stats
+from sklearn.cluster import KMeans
+
+def compute_predictive_rmse_splits(alphas_array, prices_series, k, w, method='kmeans', n_splits=5):
+    """Calcula RMSE predictivo por particiones de validación cruzada."""
+    prices = np.array(prices_series.values, dtype=float)
+    rmses = []
+    split_size = len(alphas_array) // (n_splits + 1)
+
+    for s in range(n_splits):
+        split_idx = split_size * (s + 1)
+        if split_idx >= len(alphas_array) - 2:
+            continue
+
+        train_alphas = alphas_array[:split_idx]
+        test_alphas = alphas_array[split_idx:]
+
+        if method == 'kmeans':
+            km = KMeans(n_clusters=k, random_state=SEED, n_init=10)
+            km.fit(train_alphas.reshape(-1, 1))
+            train_states = km.predict(train_alphas.reshape(-1, 1))
+            test_states = km.predict(test_alphas.reshape(-1, 1))
+            centroids = km.cluster_centers_.flatten()
+        else:
+            boundaries = np.quantile(train_alphas, np.linspace(0, 1, k + 1)[1:-1])
+            train_states = np.digitize(train_alphas, boundaries)
+            test_states = np.digitize(test_alphas, boundaries)
+            centroids = np.array([train_alphas[train_states == i].mean() for i in range(k)])
+            centroids = np.nan_to_num(centroids)
+
+        P = np.zeros((k, k))
+        for i in range(len(train_states) - 1):
+            P[train_states[i], train_states[i+1]] += 1
+        rs = P.sum(axis=1)
+        for i in range(k):
+            if rs[i] > 0: P[i, :] /= rs[i]
+
+        test_prices = prices[w + split_idx:]
+        pred_prices = []
+        for t_idx in range(min(len(test_states) - 1, len(test_prices) - 1)):
+            cs = test_states[t_idx]
+            ns = np.argmax(P[cs, :])
+            pa = centroids[ns] if ns < len(centroids) else 0
+            pred_prices.append(prices[w + split_idx + t_idx] * (1 + pa))
+
+        if pred_prices:
+            rmse = np.sqrt(mean_squared_error(test_prices[:len(pred_prices)], pred_prices))
+            rmses.append(rmse)
+
+    return rmses
+
+significance_results = []
+for _, row in df_best.iterrows():
+    fuel = row['Combustible']
+    if fuel not in df_silver.columns:
+        continue
+    series = df_silver[fuel].fillna(0)
+    w_opt = int(row['W'])
+    l_opt = row['Lambda']
+    k_opt = int(row['k'])
+
+    alphas = calculate_alphas(series, w_opt, l_opt)
+
+    rmses_km = compute_predictive_rmse_splits(alphas, series, k_opt, w_opt, 'kmeans')
+    rmses_q = compute_predictive_rmse_splits(alphas, series, 4, w_opt, 'quantiles')
+
+    min_len = min(len(rmses_km), len(rmses_q))
+    if min_len >= 2:
+        t_stat, p_val = stats.ttest_rel(rmses_km[:min_len], rmses_q[:min_len])
+    else:
+        t_stat, p_val = 0.0, 1.0
+
+    significance_results.append({
+        'Combustible': fuel,
+        'RMSE_KMeans_Mean': float(np.mean(rmses_km)) if rmses_km else 0.0,
+        'RMSE_Quantiles_Mean': float(np.mean(rmses_q)) if rmses_q else 0.0,
+        'T_Statistic': float(t_stat),
+        'P_Value': float(p_val),
+        'Significativo_005': p_val < 0.05,
+        'Mejor_Metodo': 'K-Means' if np.mean(rmses_km or [999]) < np.mean(rmses_q or [999]) else 'Cuantiles'
+    })
+    print(f"  {fuel}: K-Means RMSE={np.mean(rmses_km):.4f} vs Cuantiles RMSE={np.mean(rmses_q):.4f} | p={p_val:.4f}")
+
+if significance_results:
+    df_sig = spark.createDataFrame(pd.DataFrame(significance_results))
+    df_sig.write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(f"{CATALOG}.gold.tesis_cap5_significancia_estadistica")
+    print("✅ tesis_cap5_significancia_estadistica")
+
+# COMMAND ----------
+# MAGIC %md
+# MAGIC ## 7. Pronóstico Próxima Semana
+
+# COMMAND ----------
+
+try:
+    df_estados = spark.table(f"{CATALOG}.gold.tesis_alphas_con_estados").toPandas()
+    df_matrices_p = spark.table(f"{CATALOG}.gold.tesis_cap3_matrices_transicion").toPandas()
+    df_centroids = spark.table(f"{CATALOG}.gold.tesis_cap3_centroides").toPandas()
+
+    pronosticos = []
+    for fuel in combustibles:
+        col_state = f'{fuel}_State'
+        if col_state not in df_estados.columns or fuel not in df_estados.columns:
+            continue
+
+        last_state = int(df_estados[col_state].iloc[-1])
+        last_price = float(df_estados[fuel].iloc[-1])
+        last_date = str(df_estados['Fecha'].iloc[-1]) if 'Fecha' in df_estados.columns else ''
+
+        P = np.zeros((4, 4))
+        for _, r in df_matrices_p[df_matrices_p['Combustible'] == fuel].iterrows():
+            P[int(r['Estado_Origen']), int(r['Estado_Destino'])] = r['Probabilidad']
+
+        cents = df_centroids[df_centroids['Combustible'] == fuel].sort_values('Estado')['Centroide_Alpha'].values
+        next_s = np.argmax(P[last_state, :])
+        confidence = float(P[last_state, next_s])
+        pred_alpha = float(cents[next_s]) if next_s < len(cents) else 0
+        pred_price = last_price * (1 + pred_alpha)
+
+        pronosticos.append({
+            'Combustible': fuel, 'Ultimo_Precio': last_price,
+            'Ultima_Fecha': last_date, 'Estado_Actual': last_state,
+            'Estado_Predicho': int(next_s), 'Confianza': confidence,
+            'Alpha_Predicho': pred_alpha, 'Precio_Pronosticado': pred_price
+        })
+
+    if pronosticos:
+        spark.createDataFrame(pd.DataFrame(pronosticos)).write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(f"{CATALOG}.gold.tesis_cap5_pronostico_siguiente")
+        print("✅ tesis_cap5_pronostico_siguiente")
+        display(pd.DataFrame(pronosticos))
+except Exception as e:
+    print(f"Pronóstico omitido: {e}")
