@@ -101,8 +101,8 @@ for fuel in combustibles:
     
     if col_alpha not in df_alphas.columns: continue
     
-    alphas = df_alphas[col_alpha].fillna(0).values
-    prices = df_alphas[col_price].fillna(0).values
+    alphas = np.array(df_alphas[col_alpha].fillna(0).values, dtype=float)
+    prices = np.array(df_alphas[col_price].fillna(0).values, dtype=float)
     
     for D in RESERVOIR_D_VALUES:
         for rho in RESERVOIR_RHO_VALUES:
