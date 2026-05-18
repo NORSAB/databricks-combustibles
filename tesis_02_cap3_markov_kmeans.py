@@ -65,7 +65,8 @@ def estimate_transition_matrix(states, k):
 
 # COMMAND ----------
 
-k_optimo = 4
+# K* óptimo por combustible según Tabla 5.1 de la tesis
+K_OPTIMO_POR_FUEL = {'Super': 4, 'Regular': 3, 'Diesel': 3, 'Kerosene': 5}
 k_cuantiles = 4  # benchmark fijo
 
 resultados_centroides = []
@@ -83,6 +84,7 @@ for fuel in combustibles:
         continue
 
     alphas = np.array(df_alphas[col_alpha].fillna(0).values, dtype=float)
+    k_optimo = K_OPTIMO_POR_FUEL[fuel]
 
     # === K-MEDIAS ===
     states_km, centroids = get_markov_states_kmeans(alphas, k=k_optimo)
@@ -147,14 +149,13 @@ for fuel in combustibles:
 
     resultados_propiedades_espectrales.append({
         'Combustible': fuel,
+        'K_Optimo': k_optimo,
         'Varianza_Explicada_Pct': float(explained_var_pct),
         'Eigenvalue_Dominante': float(sorted_eigs[0]),
         'Eigenvalue_2': float(sorted_eigs[1]) if len(sorted_eigs) > 1 else 0,
-        'Mixing_Time_Approx': float(-1 / np.log(sorted_eigs[1])) if len(sorted_eigs) > 1 and sorted_eigs[1] > 0 else 0,
-        'Pi_Estacionaria_0': float(pi_stationary[0]),
-        'Pi_Estacionaria_1': float(pi_stationary[1]),
-        'Pi_Estacionaria_2': float(pi_stationary[2]),
-        'Pi_Estacionaria_3': float(pi_stationary[3]),
+        'Spectral_Gap': float(1 - sorted_eigs[1]) if len(sorted_eigs) > 1 else 0,
+        'Mixing_Time_Approx': float(-1 / np.log(sorted_eigs[1])) if len(sorted_eigs) > 1 and sorted_eigs[1] > 0 and sorted_eigs[1] < 1 else 0,
+        'Pi_Estacionaria': str([round(float(x), 6) for x in pi_stationary]),
     })
     print()
 
