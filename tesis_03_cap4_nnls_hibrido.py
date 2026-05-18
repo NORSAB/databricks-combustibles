@@ -22,21 +22,45 @@ spark.sql(f"USE CATALOG {CATALOG}")
 # COMMAND ----------
 
 def predict_next_state_nnls(P_matrix, current_state_vector):
-    """Aplica optimización NNLS para predecir el próximo vector de probabilidades de estado."""
-    # A x = b (NNLS constraints x >= 0)
-    # En Markov: P^T * state_t = state_{t+1}
-    # Adaptación NNLS para suavizar transiciones
     A = P_matrix.T
     b = current_state_vector
     x, residual = nnls(A, b)
-    
-    # Normalizar para que sea una distribución de probabilidad válida
     if np.sum(x) > 0:
         x = x / np.sum(x)
     return x
 
-# Ejemplo con matriz P identidad (mock para compilación)
-P_mock = np.array([[0.8, 0.2], [0.1, 0.9]])
-curr_state = np.array([1.0, 0.0])
-next_state = predict_next_state_nnls(P_mock, curr_state)
-print("Estado predicho (NNLS):", next_state)
+try:
+    df_matrices = spark.table(f"{CATALOG}.gold.tesis_cap3_matrices_transicion").toPandas()
+except Exception as e:
+    print("Por favor, ejecuta tesis_02 primero para generar las matrices de transición.")
+    dbutils.notebook.exit("Faltan dependencias")
+
+# Construir matrices P por combustible y predecir
+resultados_nnls = []
+combustibles = df_matrices['Combustible'].unique()
+k_optimo = 4
+
+for fuel in combustibles:
+    # Extraer la matriz P
+    P = np.zeros((k_optimo, k_optimo))
+    df_fuel = df_matrices[df_matrices['Combustible'] == fuel]
+    for _, row in df_fuel.iterrows():
+        P[int(row['Estado_Origen']), int(row['Estado_Destino'])] = row['Probabilidad']
+    
+    # Asumir que el estado actual es un vector uniforme o el último estado conocido
+    # Para la tesis, validamos que la prediccion matemática de NNLS no arroje negativos
+    curr_state = np.array([1.0, 0.0, 0.0, 0.0]) # Ejemplo estático: estado más bajo
+    
+    next_state = predict_next_state_nnls(P, curr_state)
+    
+    for i, prob in enumerate(next_state):
+        resultados_nnls.append({
+            'Combustible': fuel,
+            'Estado_Actual_Simulado': 0,
+            'Estado_Predicho': i,
+            'Probabilidad_NNLS': float(prob)
+        })
+
+df_nnls = spark.createDataFrame(pd.DataFrame(resultados_nnls))
+df_nnls.write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(f"{CATALOG}.gold.tesis_cap4_predicciones_nnls")
+print("Predicciones NNLS guardadas en combustibles_hn.gold.tesis_cap4_predicciones_nnls")
