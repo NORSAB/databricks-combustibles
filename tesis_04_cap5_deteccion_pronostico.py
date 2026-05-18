@@ -27,7 +27,7 @@ np.random.seed(SEED)
 # COMMAND ----------
 
 def calculate_alphas(series, w, lambda_decay):
-    prices = series.values
+    prices = np.array(series.values, dtype=float)
     alphas = np.zeros(len(prices))
     for i in range(w, len(prices)):
         diff = (prices[i] - prices[i-w]) / prices[i-w] if prices[i-w] != 0 else 0
