@@ -20,8 +20,10 @@
 import numpy as np
 import pandas as pd
 from scipy.optimize import nnls
+from scipy import stats
 from sklearn.metrics import mean_squared_error
 from sklearn.decomposition import PCA
+from sklearn.linear_model import Ridge
 from pyspark.sql import functions as F
 
 CATALOG = "combustibles_hn"
@@ -31,9 +33,9 @@ SEED = 42
 np.random.seed(SEED)
 
 # Espacio de búsqueda
-RESERVOIR_D_VALUES = [10, 20, 50, 100, 150]
-RESERVOIR_RHO_VALUES = [0.5, 0.7, 0.8, 0.9, 0.95, 0.99]
-RESERVOIR_LEAK_RATES = [0.3, 0.5, 0.8, 1.0]
+RESERVOIR_D_VALUES = [10, 20, 50, 60, 100, 150]
+RESERVOIR_RHO_VALUES = [0.5, 0.7, 0.8, 0.85, 0.9, 0.95, 0.99]
+RESERVOIR_LEAK_RATES = [0.1, 0.3, 0.5, 0.8, 1.0]
 RESERVOIR_WASHOUT = 50
 TRAIN_RATIO = 0.8
 N_REALIZATIONS = 30  # Para boxplot (Fig 07)
@@ -90,9 +92,17 @@ def evaluate_ssrc(fuel_name, alphas, prices, D, rho, leak_rate, seed, train_size
     except Exception:
         return None, None, None, None
 
+    # Ridge Regression como benchmark alternativo (Tabla 6.2)
+    try:
+        ridge = Ridge(alpha=1.0, fit_intercept=False)
+        ridge.fit(H_train.T, targets_train)
+        W_out_ridge = ridge.coef_
+    except Exception:
+        W_out_ridge = None
+
     test_start = train_end
     test_end = T_eff - 1
-    actual_prices, ssrc_pred_prices, weeks = [], [], []
+    actual_prices, ssrc_pred_prices, ridge_pred_prices, weeks = [], [], [], []
 
     for t in range(test_start, test_end):
         alpha_pred = W_out @ H_full[:, t]
@@ -101,11 +111,17 @@ def evaluate_ssrc(fuel_name, alphas, prices, D, rho, leak_rate, seed, train_size
         actual_prices.append(prices_eff[t + 1])
         weeks.append(t - test_start + 1)
 
+        # Ridge prediction
+        if W_out_ridge is not None:
+            alpha_pred_r = W_out_ridge @ H_full[:, t]
+            ridge_pred_prices.append(prices_eff[t] * (1 + alpha_pred_r))
+
     if len(actual_prices) < 2:
         return None, None, None, None
 
     rmse = np.sqrt(mean_squared_error(actual_prices, ssrc_pred_prices))
-    result = {'Combustible': fuel_name, 'D': D, 'rho': rho, 'leak_rate': leak_rate, 'RMSE': rmse}
+    rmse_ridge = np.sqrt(mean_squared_error(actual_prices, ridge_pred_prices)) if ridge_pred_prices else None
+    result = {'Combustible': fuel_name, 'D': D, 'rho': rho, 'leak_rate': leak_rate, 'RMSE': rmse, 'RMSE_Ridge': rmse_ridge}
     predictions = {'weeks': weeks, 'actual': actual_prices, 'ssrc_pred': ssrc_pred_prices}
     return result, predictions, eigs, H_full
 
@@ -283,7 +299,6 @@ for _, row in df_best_ssrc.iterrows():
 
 resultados_predicciones = []
 comparacion = []
-k_optimo = 4
 
 for fuel in combustibles:
     if fuel not in mejores_predicciones:
@@ -294,10 +309,13 @@ for fuel in combustibles:
 
     df_fc = df_centroides[df_centroides['Combustible'] == fuel].sort_values('Estado')
     centroids = df_fc['Centroide_Alpha'].values
+    k_optimo = len(centroids)
 
     P = np.zeros((k_optimo, k_optimo))
     for _, r in df_matrices[df_matrices['Combustible'] == fuel].iterrows():
-        P[int(r['Estado_Origen']), int(r['Estado_Destino'])] = r['Probabilidad']
+        o, d = int(r['Estado_Origen']), int(r['Estado_Destino'])
+        if o < k_optimo and d < k_optimo:
+            P[o, d] = r['Probabilidad']
 
     prices_full = np.array(df_alphas[fuel].fillna(0).values, dtype=float)
     states_full = df_alphas[col_state].values if col_state in df_alphas.columns else np.zeros(len(prices_full))
@@ -307,9 +325,12 @@ for fuel in combustibles:
         t = test_start + RESERVOIR_WASHOUT + w_idx
         if t < len(states_full) and t < len(prices_full):
             current_s = int(states_full[t])
-            next_s = np.argmax(P[current_s, :])
-            markov_alpha = centroids[next_s] if next_s < len(centroids) else 0
-            markov_pred = prices_full[t] * (1 + markov_alpha)
+            if current_s < k_optimo:
+                next_s = np.argmax(P[current_s, :])
+                markov_alpha = centroids[next_s] if next_s < len(centroids) else 0
+                markov_pred = prices_full[t] * (1 + markov_alpha)
+            else:
+                markov_pred = actual
         else:
             markov_pred = actual
 
@@ -319,20 +340,47 @@ for fuel in combustibles:
             'Prediccion_SSRC': float(ssrc_pred)
         })
 
-    # Comparación final
+    # Comparación final con DM test y std (Tablas 6.2 y 6.3)
     ssrc_row = df_best_ssrc[df_best_ssrc['Combustible'] == fuel]
     markov_row = df_markov_rmse[df_markov_rmse['Combustible'] == fuel]
     if not ssrc_row.empty and not markov_row.empty:
         rmse_m = float(markov_row.iloc[0]['RMSE_Markov'])
         rmse_s = float(ssrc_row.iloc[0]['RMSE'])
+        rmse_ridge = float(ssrc_row.iloc[0]['RMSE_Ridge']) if 'RMSE_Ridge' in ssrc_row.columns and pd.notna(ssrc_row.iloc[0].get('RMSE_Ridge')) else None
         delta = (rmse_s - rmse_m) / rmse_m * 100
+        delta_solver = ((rmse_s - rmse_ridge) / rmse_ridge * 100) if rmse_ridge else None
+
+        # Std de 30 realizaciones
+        rmses_30 = [x['RMSE'] for x in realizaciones if x['Combustible'] == fuel]
+        rmse_std = float(np.std(rmses_30)) if rmses_30 else 0.0
+
+        # Test de Diebold-Mariano: comparar errores cuadráticos
+        preds_f = [p for p in resultados_predicciones if p['Combustible'] == fuel]
+        if preds_f:
+            e_markov = [(p['Precio_Real'] - p['Prediccion_Markov'])**2 for p in preds_f]
+            e_ssrc = [(p['Precio_Real'] - p['Prediccion_SSRC'])**2 for p in preds_f]
+            d_t = np.array(e_markov) - np.array(e_ssrc)  # >0 means SSRC better
+            if len(d_t) > 2 and np.std(d_t) > 0:
+                dm_stat = np.mean(d_t) / (np.std(d_t) / np.sqrt(len(d_t)))
+                dm_p = 2 * (1 - stats.t.cdf(abs(dm_stat), df=len(d_t) - 1))
+            else:
+                dm_stat, dm_p = 0.0, 1.0
+        else:
+            dm_stat, dm_p = 0.0, 1.0
+
         comparacion.append({
-            'Combustible': fuel, 'RMSE_Markov': rmse_m, 'RMSE_SSRC': rmse_s,
-            'Delta_Porcentaje': delta, 'Mejor_Modelo': 'SSRC' if delta < 0 else 'Markov'
+            'Combustible': fuel, 'RMSE_Markov': rmse_m,
+            'RMSE_SSRC': rmse_s, 'RMSE_SSRC_Std': rmse_std,
+            'RMSE_Ridge': rmse_ridge,
+            'Delta_Porcentaje': delta,
+            'Delta_Solver': delta_solver,
+            'DM_Statistic': float(dm_stat), 'DM_P_Value': float(dm_p),
+            'Significativo_005': dm_p < 0.05,
+            'Mejor_Modelo': 'SSRC' if delta < 0 else 'Markov'
         })
 
 if comparacion:
-    print("\n--- COMPARACION FINAL ---")
+    print("\n--- COMPARACION FINAL (con DM test) ---")
     display(pd.DataFrame(comparacion))
 
 # COMMAND ----------
