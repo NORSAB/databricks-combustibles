@@ -346,13 +346,17 @@ try:
         last_price = float(df_estados[fuel].iloc[-1])
         last_date = str(df_estados['Fecha'].iloc[-1]) if 'Fecha' in df_estados.columns else ''
 
-        P = np.zeros((4, 4))
-        for _, r in df_matrices_p[df_matrices_p['Combustible'] == fuel].iterrows():
-            P[int(r['Estado_Origen']), int(r['Estado_Destino'])] = r['Probabilidad']
-
         cents = df_centroids[df_centroids['Combustible'] == fuel].sort_values('Estado')['Centroide_Alpha'].values
-        next_s = np.argmax(P[last_state, :])
-        confidence = float(P[last_state, next_s])
+        k_fuel = len(cents)
+
+        P = np.zeros((k_fuel, k_fuel))
+        for _, r in df_matrices_p[df_matrices_p['Combustible'] == fuel].iterrows():
+            o, d = int(r['Estado_Origen']), int(r['Estado_Destino'])
+            if o < k_fuel and d < k_fuel:
+                P[o, d] = r['Probabilidad']
+
+        next_s = np.argmax(P[last_state, :]) if last_state < k_fuel else 0
+        confidence = float(P[last_state, next_s]) if last_state < k_fuel else 0
         pred_alpha = float(cents[next_s]) if next_s < len(cents) else 0
         pred_price = last_price * (1 + pred_alpha)
 
