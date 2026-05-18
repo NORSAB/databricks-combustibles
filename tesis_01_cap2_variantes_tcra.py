@@ -17,6 +17,10 @@ from pyspark.sql import functions as F
 CATALOG = "combustibles_hn"
 spark.sql(f"USE CATALOG {CATALOG}")
 
+# Semilla global para reproducibilidad
+SEED = 42
+np.random.seed(SEED)
+
 # COMMAND ----------
 # MAGIC %md
 # MAGIC ## 1. Lectura de Datos Silver (Histórico + Scraping)
@@ -56,24 +60,31 @@ def calculate_alphas_tcra(series, w, lambda_decay):
 
 # COMMAND ----------
 # MAGIC %md
-# MAGIC ## 3. Procesamiento y Generación de Alphas (Grid Search)
+# MAGIC ## 3. Procesamiento y Generación de Alphas (los 4 combustibles)
 
 # COMMAND ----------
 
-# Ejemplo: Procesar Gasolina Super con parámetros óptimos
+# Parámetros óptimos (valores estándar de la tesis)
 w_opt = 4
 lambda_opt = 0.8
 
-df_silver['Super_Alpha'] = calculate_alphas_tcra(df_silver['Super'].fillna(0), w_opt, lambda_opt)
-df_silver['Diesel_Alpha'] = calculate_alphas_tcra(df_silver['Diesel'].fillna(0), w_opt, lambda_opt)
+# Calcular Alphas para TODOS los combustibles
+combustibles = ['Super', 'Regular', 'Diesel', 'Kerosene']
 
-# Guardar la tabla enriquecida como una nueva Silver/Gold para la Tesis
+for fuel in combustibles:
+    if fuel in df_silver.columns:
+        df_silver[f'{fuel}_Alpha'] = calculate_alphas_tcra(df_silver[fuel].fillna(0), w_opt, lambda_opt)
+        print(f"Alpha calculado para {fuel}: min={df_silver[f'{fuel}_Alpha'].min():.6f}, max={df_silver[f'{fuel}_Alpha'].max():.6f}")
+    else:
+        print(f"ADVERTENCIA: Columna {fuel} no encontrada en Silver.")
+
+# Guardar la tabla enriquecida como Gold para la Tesis
 df_tesis_alphas = spark.createDataFrame(df_silver)
 
-# Guardamos en la capa gold para la tesis
 (df_tesis_alphas.write
  .mode("overwrite")
  .option("overwriteSchema", "true")
  .saveAsTable(f"{CATALOG}.gold.tesis_alphas_combustibles"))
 
-print("Guardado en combustibles_hn.gold.tesis_alphas_combustibles")
+print(f"\nGuardado en combustibles_hn.gold.tesis_alphas_combustibles")
+print(f"Columnas: {list(df_silver.columns)}")
