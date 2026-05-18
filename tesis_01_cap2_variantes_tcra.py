@@ -37,6 +37,7 @@ display(df_silver.head())
 
 def calculate_tcroc(prices, w):
     """Calcula la variante TCROC base (ventana w)."""
+    prices = np.array(prices, dtype=float)
     tcroc = np.zeros(len(prices))
     for i in range(w, len(prices)):
         if prices[i-w] != 0:
@@ -45,7 +46,7 @@ def calculate_tcroc(prices, w):
 
 def calculate_alphas_tcra(series, w, lambda_decay):
     """Familia de operadores suavizados TCRA."""
-    prices = series.values
+    prices = np.array(series.values, dtype=float)
     alphas = np.zeros(len(prices))
     for i in range(w, len(prices)):
         # Formula simplificada del TCRA con decaimiento lambda
