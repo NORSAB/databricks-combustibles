@@ -127,16 +127,19 @@ resultados_nnls = []
 resultados_markov_rmse = []
 resultados_precios_semanales = []
 combustibles = df_matrices['Combustible'].unique()
-k_optimo = 4
 
 for fuel in combustibles:
+    # Derivar K* dinámicamente desde los centroides disponibles
+    df_fuel_centroides = df_centroides[df_centroides['Combustible'] == fuel].sort_values('Estado')
+    k_optimo = len(df_fuel_centroides)
+    centroids = df_fuel_centroides['Centroide_Alpha'].values
+
     P = np.zeros((k_optimo, k_optimo))
     df_fuel = df_matrices[df_matrices['Combustible'] == fuel]
     for _, row in df_fuel.iterrows():
-        P[int(row['Estado_Origen']), int(row['Estado_Destino'])] = row['Probabilidad']
-
-    df_fuel_centroides = df_centroides[df_centroides['Combustible'] == fuel].sort_values('Estado')
-    centroids = df_fuel_centroides['Centroide_Alpha'].values
+        o, d = int(row['Estado_Origen']), int(row['Estado_Destino'])
+        if o < k_optimo and d < k_optimo:
+            P[o, d] = row['Probabilidad']
 
     # NNLS desde cada estado inicial
     for s in range(k_optimo):
