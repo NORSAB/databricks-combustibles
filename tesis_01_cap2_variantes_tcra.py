@@ -10,11 +10,11 @@
 # MAGIC    * **TCRAM:** Ventana móvil $W \ge 10$, sin decaimiento ($\lambda = 1.0$)
 # MAGIC    * **ETCRAM:** Ventana móvil $W \ge 10$, con decaimiento ($\lambda < 1.0$)
 # MAGIC 2. Evaluar el desempeño continuo (MAPE y RMSE) de la predicción un-paso-adelante para cada combustible en 8 particiones temporales (CV).
-# MAGIC 3. Seleccionar los parámetros óptimos por combustible para cada una de las 4 variantes, y elegir la mejor global.
+# MAGIC 3. Seleccionar los parámetros óptimos por combustible para cada una de las 4 variantes usando el protocolo de promedio de hiperparámetros óptimos por partición, y elegir la mejor global.
 # MAGIC 4. Guardar los alphas óptimos calculados para cada variante (y el ganador absoluto) y el rendimiento en tablas Gold.
 # MAGIC
 # MAGIC **Salidas Gold:**
-# MAGIC - `combustibles_hn.gold.tesis_cap2_grid_performance`: MAPE y RMSE de todas las combinaciones y variantes evaluadas.
+# MAGIC - `combustibles_hn.gold.tesis_cap2_grid_performance`: MAPE y RMSE de todas las combinaciones y variantes evaluadas (todas las ejecuciones de la grilla).
 # MAGIC - `combustibles_hn.gold.tesis_cap2_best_hyperparams`: Parámetros óptimos para cada una de las 4 variantes.
 # MAGIC - `combustibles_hn.gold.tesis_alphas_combustibles_optimos`: Precios y alphas óptimos calculados para cada una de las 4 variantes de la familia TCRA.
 # MAGIC
@@ -116,62 +116,71 @@ def run_grid_search(fuel_name, series):
     return results
 
 def select_optimal_params(df_results, fuel_name):
-    """Selecciona los parámetros óptimos para cada una de las 4 variantes y destaca la mejor global."""
+    """Selecciona los parámetros óptimos para cada una de las 4 variantes
+    aplicando el protocolo de promedio de hiperparámetros óptimos por partición,
+    y luego elige la mejor variante global."""
     df_fuel = df_results[df_results['Combustible'] == fuel_name]
+    partitions = df_fuel['Particion'].unique()
+    variants = ['TCRA', 'ETCRA', 'TCRAM', 'ETCRAM']
     
-    # Agrupar por W, Lambda y Variante para obtener promedios de CV
-    df_grouped = df_fuel.groupby(['W', 'Lambda', 'Variante']).agg({'MAPE': 'mean', 'RMSE': 'mean'}).reset_index()
-    
-    # Encontrar el óptimo para cada una de las 4 variantes
     opt_rows = []
     
-    # 1. TCRA (fijo W=2, Lambda=1.0)
-    df_tcra = df_grouped[df_grouped['Variante'] == 'TCRA']
-    if not df_tcra.empty:
-        idx = df_tcra['MAPE'].idxmin()
-        opt_rows.append(df_tcra.loc[idx])
-    else:
-        opt_rows.append(pd.Series({'W': 2, 'Lambda': 1.0, 'Variante': 'TCRA', 'MAPE': 99.0, 'RMSE': 9.9}))
+    for var in variants:
+        best_per_partition = []
+        for part in partitions:
+            df_part = df_fuel[(df_fuel['Particion'] == part) & (df_fuel['Variante'] == var)]
+            if not df_part.empty:
+                # Encontrar la combinación que minimiza el MAPE en este fold
+                best_row_part = df_part.loc[df_part['MAPE'].idxmin()]
+                best_per_partition.append({
+                    'W': best_row_part['W'],
+                    'Lambda': best_row_part['Lambda']
+                })
+                
+        if best_per_partition:
+            df_best_parts = pd.DataFrame(best_per_partition)
+            # Promedio de hiperparámetros
+            w_opt = int(round(df_best_parts['W'].mean()))
+            lambda_opt = float(np.round(df_best_parts['Lambda'].mean(), 2))
+        else:
+            w_opt = 2 if var in ['TCRA', 'ETCRA'] else 52
+            lambda_opt = 1.0 if var in ['TCRA', 'TCRAM'] else 0.99
+            
+        # Encontrar el rendimiento de esta combinación promedio (W_opt, Lambda_opt) en la grilla
+        df_opt_comb = df_fuel[(df_fuel['W'] == w_opt) & 
+                              (df_fuel['Lambda'] == lambda_opt) & 
+                              (df_fuel['Variante'] == var)]
         
-    # 2. ETCRA (fijo W=2, Lambda < 1.0)
-    df_etcra = df_grouped[df_grouped['Variante'] == 'ETCRA']
-    if not df_etcra.empty:
-        idx = df_etcra['MAPE'].idxmin()
-        opt_rows.append(df_etcra.loc[idx])
-    else:
-        opt_rows.append(pd.Series({'W': 2, 'Lambda': 0.70, 'Variante': 'ETCRA', 'MAPE': 99.0, 'RMSE': 9.9}))
-        
-    # 3. TCRAM (ventana móvil W >= 10, Lambda = 1.0)
-    df_tcram = df_grouped[df_grouped['Variante'] == 'TCRAM']
-    if not df_tcram.empty:
-        idx = df_tcram['MAPE'].idxmin()
-        opt_rows.append(df_tcram.loc[idx])
-    else:
-        opt_rows.append(pd.Series({'W': 52, 'Lambda': 1.0, 'Variante': 'TCRAM', 'MAPE': 99.0, 'RMSE': 9.9}))
-        
-    # 4. ETCRAM (ventana móvil W >= 10, Lambda < 1.0)
-    df_etcram = df_grouped[df_grouped['Variante'] == 'ETCRAM']
-    if not df_etcram.empty:
-        idx = df_etcram['MAPE'].idxmin()
-        opt_rows.append(df_etcram.loc[idx])
-    else:
-        opt_rows.append(pd.Series({'W': 52, 'Lambda': 0.99, 'Variante': 'ETCRAM', 'MAPE': 99.0, 'RMSE': 9.9}))
+        if not df_opt_comb.empty:
+            # Promedio de MAPE y RMSE a través de todas las particiones para esta combinación
+            mape_min = df_opt_comb['MAPE'].mean()
+            rmse_min = df_opt_comb['RMSE'].mean()
+        else:
+            # Fallback por si la combinación promedio no está en la grilla
+            # Buscamos la combinación más cercana en la grilla para esta variante
+            df_var_grouped = df_fuel[df_fuel['Variante'] == var].groupby(['W', 'Lambda']).agg({'MAPE': 'mean', 'RMSE': 'mean'}).reset_index()
+            df_var_grouped['dist'] = (df_var_grouped['W'] - w_opt)**2 + (df_var_grouped['Lambda'] - lambda_opt)**2 * 1000
+            best_group_row = df_var_grouped.loc[df_var_grouped['dist'].idxmin()]
+            w_opt = int(best_group_row['W'])
+            lambda_opt = float(best_group_row['Lambda'])
+            mape_min = best_group_row['MAPE']
+            rmse_min = best_group_row['RMSE']
+            
+        opt_rows.append({
+            'Combustible': fuel_name,
+            'Variante': var,
+            'W_opt': w_opt,
+            'Lambda_opt': lambda_opt,
+            'MAPE_min': mape_min,
+            'RMSE_min': rmse_min
+        })
         
     df_opt = pd.DataFrame(opt_rows)
-    df_opt['Combustible'] = fuel_name
     
-    # Encontrar la fila con el menor MAPE global entre las 4
-    best_idx = df_opt['MAPE'].idxmin()
+    # Elegir la mejor variante global basada en el menor MAPE promedio
+    best_idx = df_opt['MAPE_min'].idxmin()
     df_opt['Es_Mejor_Global'] = False
     df_opt.loc[best_idx, 'Es_Mejor_Global'] = True
-    
-    # Renombrar columnas para claridad
-    df_opt = df_opt.rename(columns={
-        'W': 'W_opt',
-        'Lambda': 'Lambda_opt',
-        'MAPE': 'MAPE_min',
-        'RMSE': 'RMSE_min'
-    })
     
     return df_opt
 
@@ -191,7 +200,7 @@ for fuel in combustibles:
         grid_res = run_grid_search(fuel, df_silver[fuel])
         all_grid_results.extend(grid_res)
         
-        # Seleccionar mejores hiperparámetros por variante
+        # Seleccionar mejores hiperparámetros usando el método promedio de particiones
         df_opt_fuel = select_optimal_params(pd.DataFrame(grid_res), fuel)
         summary_best_dfs.append(df_opt_fuel)
         
@@ -199,7 +208,7 @@ for fuel in combustibles:
         row_etcram = df_opt_fuel[df_opt_fuel['Variante'] == 'ETCRAM'].iloc[0]
         
         print(f"  Óptimo Global ({row_global['Variante']}): W={row_global['W_opt']}, Lambda={row_global['Lambda_opt']:.2f} (MAPE={row_global['MAPE_min']:.4f}%)")
-        print(f"  Óptimo ETCRAM (Ventana): W={row_etcram['W_opt']}, Lambda={row_etcram['Lambda_opt']:.2f} (MAPE={row_etcram['MAPE_min']:.4f}%)")
+        print(f"  Óptimo ETCRAM (Promedio Folds): W={row_etcram['W_opt']}, Lambda={row_etcram['Lambda_opt']:.2f} (MAPE={row_etcram['MAPE_min']:.4f}%)")
     else:
         print(f"ADVERTENCIA: Columna {fuel} no encontrada en Silver.")
 
@@ -244,7 +253,7 @@ for fuel in combustibles:
 
 # COMMAND ----------
 
-# 5a. Guardar todas las combinaciones del Grid Search
+# 5a. Guardar todas las combinaciones del Grid Search (todas las ejecuciones)
 spark.createDataFrame(df_grid_all).write \
     .mode("overwrite") \
     .option("overwriteSchema", "true") \
