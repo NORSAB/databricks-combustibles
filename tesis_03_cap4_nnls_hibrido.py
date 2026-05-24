@@ -1,6 +1,6 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # Tesis Cap 4 — Modelo Híbrido TCROC-NNLS
+# MAGIC # Tesis Cap 4 — Modelo Híbrido TCRA-NNLS
 # MAGIC
 # MAGIC **Proyecto:** Combustibles en Honduras + Modelos de Tesis
 # MAGIC **Objetivo:** Validación predictiva NNLS + RMSE Markov base + Tabla 4.3 (umbrales fijos).
