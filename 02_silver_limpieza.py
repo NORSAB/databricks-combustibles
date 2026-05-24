@@ -1,4 +1,8 @@
 # Databricks notebook source
+# /// script
+# [tool.databricks.environment]
+# environment_version = "2"
+# ///
 # MAGIC %md
 # MAGIC # 02 - Capa SILVER: Limpieza y unificacion
 # MAGIC
@@ -67,13 +71,22 @@ CORRECCIONES_FECHA = [
     ("31-6 agosto 2023",     "31 jul - 6 agosto 2023"),
     ("28-3 sept 2023",       "28 agos -3 sept 2023"),
     ("30 dic-05 ene 2025",   "30 diciembre 2024"),
+    # Correcciones adicionales con espacios al inicio/final
+    (" 26-1 feb ",           "26 ene -1 feb"),
+    (" 23-1 mar ",           "23 feb -1 mar"),
+    (" 30-5 abril ",         "30 mar -5 abril"),
+    (" 27-3 mayo ",          "27 abril -3 mayo"),
+    ("26-1 feb",             "26 ene -1 feb"),
+    ("23-1 mar",             "23 feb -1 mar"),
+    ("30-5 abril",           "30 mar -5 abril"),
+    ("27-3 mayo",            "27 abril -3 mayo"),
 ]
 
 def aplicar_correcciones(col):
     """Aplica todas las correcciones de texto sobre una columna."""
-    expr = col
+    expr = F.trim(col)
     for buscar, reemplazar in CORRECCIONES_FECHA:
-        expr = F.regexp_replace(expr, F.lit(buscar), F.lit(reemplazar))
+        expr = F.regexp_replace(expr, F.lit(buscar.strip()), F.lit(reemplazar.strip()))
     return expr
 
 # COMMAND ----------
@@ -365,6 +378,19 @@ print(f"Filas con Anio NULL: {anio_nulls}")
 if anio_nulls > 0:
     print("\nEjemplos de filas con Anio NULL:")
     df_silver_check.filter(F.col("Anio").isNull()).select("Fecha", "Fecha_texto_original", "Anio").show(10, truncate=False)
+
+# COMMAND ----------
+
+# Mostrar los datos del año en curso ordenados de forma ascendente, por cada combustible
+for combustible in ["Super", "Regular", "Diesel", "Kerosene"]:
+    if combustible in df_silver_check.columns:
+        df_anio_actual = (
+            df_silver_check
+            .filter((F.col("Anio") == ANIO_EN_CURSO) & F.col(combustible).isNotNull())
+            .orderBy(F.col("Fecha").asc())
+        )
+        print(f"\n{'='*40}\n{combustible}: datos año en curso ordenados ascendente\n{'='*40}")
+        display(df_anio_actual.select("Fecha", combustible, "Anio", "Fecha_texto_original"))
 
 # COMMAND ----------
 

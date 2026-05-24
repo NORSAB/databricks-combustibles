@@ -1,4 +1,8 @@
 # Databricks notebook source
+# /// script
+# [tool.databricks.environment]
+# environment_version = "2"
+# ///
 # MAGIC %md
 # MAGIC # 01 - Capa BRONZE: Ingesta de datos crudos
 # MAGIC
@@ -162,8 +166,8 @@ def scrape_anio(anio: int, url: str) -> "pd.DataFrame":
 
 # COMMAND ----------
 
-# %pip install --quiet lxml html5lib beautifulsoup4
-# dbutils.library.restartPython()
+ #%pip install --quiet lxml html5lib beautifulsoup4
+ #dbutils.library.restartPython()
 
 # COMMAND ----------
 
@@ -238,6 +242,20 @@ df_count_hist = spark.sql("SELECT COUNT(*) AS filas FROM combustibles_hn.bronze.
 df_count_web  = spark.sql(f"SELECT COUNT(*) AS filas FROM combustibles_hn.bronze.bronze_web_{ANIO_EN_CURSO}").collect()[0][0]
 print(f"bronze_csv_historico (hasta {ANIO_EN_CURSO-1}): {df_count_hist} filas")
 print(f"bronze_web_{ANIO_EN_CURSO}:                     {df_count_web} filas")
+
+# COMMAND ----------
+
+# Mostrar todos los datos del webscraping agrupados por combustible
+tabla_web = f"{CATALOG}.{SCHEMA}.bronze_web_{ANIO_EN_CURSO}"
+df_web = spark.table(tabla_web)
+
+# Detectar columnas de combustibles
+columnas_combustible = [c for c in df_web.columns if re.search(r"(super|súper|regular|diesel|diésel|kerosene)", c, re.IGNORECASE)]
+
+# Mostrar datos por cada combustible, incluyendo la fecha
+for col in columnas_combustible:
+    print(f"\nDatos para combustible: {col}")
+    display(df_web.select("AnioFuente", "Fech", col, "fuente", "ingesta_ts"))
 
 # COMMAND ----------
 
