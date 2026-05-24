@@ -59,13 +59,13 @@ def calculate_alphas_fast(v, W, lambd):
 
 def run_grid_search(fuel_name, series):
     """Ejecuta la búsqueda en grilla de W y Lambda a lo largo de 8 particiones temporales."""
-    v = np.asarray(series.fillna(method='ffill').fillna(method='bfill').values, dtype=float)
+    v = np.asarray(series.ffill().bfill().values, dtype=float)
     n = len(v)
     
     ratios = [0.60, 0.65, 0.70, 0.75, 0.80, 0.85, 0.90, 0.95]
     splits = [int(n * r) for r in ratios]
     
-    w_range = np.arange(3, 61, 1) # W de 3 a 60
+    w_range = np.arange(10, 61, 1) # W de 10 a 60
     lambda_range = np.round(np.arange(0.70, 1.01, 0.01), 2) # lambda de 0.70 a 1.00
     
     results = []
