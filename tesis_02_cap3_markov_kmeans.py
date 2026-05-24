@@ -1,11 +1,21 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # Tesis Cap 3 — Cadenas de Markov: K-Medias + Cuantiles (Benchmark)
+# MAGIC # Tesis Cap 3 — Cadenas de Markov: K-Medias, Transiciones con Errores Estándar y Propiedades Espectrales
 # MAGIC
 # MAGIC **Proyecto:** Combustibles en Honduras + Modelos de Tesis
-# MAGIC **Objetivo:** Discretizar alphas en estados via K-Medias (óptimo) y Cuantiles (benchmark).
+# MAGIC **Objetivo:** 
+# MAGIC 1. Leer los alphas óptimos del Capítulo 2 (`gold.tesis_alphas_combustibles_optimos`).
+# MAGIC 2. Discretizar alphas en estados vía K-Medias (óptimo de la tesis) y Cuantiles (benchmark).
+# MAGIC 3. Estimar las matrices de transición de Markov ($\hat{\mat{P}}$) y calcular analíticamente sus **errores estándar asintóticos** ($\hat{\sigma}_{ij}$) según el Corolario 3.1 de la tesis.
+# MAGIC 4. Realizar el análisis espectral completo de cada matriz: autovalores, brecha espectral ($\gamma$), tiempo de mezcla ($t_{\text{mix}}$) y distribución estacionaria ($\boldsymbol{\pi}$).
 # MAGIC
-# MAGIC **Salidas Gold:** centroides, matrices P (K-Medias y Cuantiles), estados por semana, boundaries cuantiles.
+# MAGIC **Salidas Gold:**
+# MAGIC - `combustibles_hn.gold.tesis_cap3_centroides`: Centroides de K-Medias para cada combustible.
+# MAGIC - `combustibles_hn.gold.tesis_cap3_matrices_transicion`: Matrices de transición K-Medias con conteos, totales y errores estándar.
+# MAGIC - `combustibles_hn.gold.tesis_cap5_cuantiles_boundaries`: Puntos de corte para la discretización de cuantiles.
+# MAGIC - `combustibles_hn.gold.tesis_cap5_cuantiles_matrices`: Matrices de transición para la discretización de cuantiles con errores estándar.
+# MAGIC - `combustibles_hn.gold.tesis_alphas_con_estados`: Alphas enriquecidos con los estados asignados por ambos métodos.
+# MAGIC - `combustibles_hn.gold.tesis_cap3_propiedades_espectrales`: Autovalores, brecha espectral, tiempos de mezcla y distribuciones estacionarias.
 
 # COMMAND ----------
 
@@ -22,16 +32,16 @@ np.random.seed(SEED)
 
 # COMMAND ----------
 # MAGIC %md
-# MAGIC ## 1. Carga de Alphas
+# MAGIC ## 1. Carga de Alphas Óptimos (del Capítulo 2)
 
 # COMMAND ----------
 
-df_alphas = spark.table(f"{CATALOG}.gold.tesis_alphas_combustibles").toPandas()
+df_alphas = spark.table(f"{CATALOG}.gold.tesis_alphas_combustibles_optimos").orderBy("Fecha").toPandas()
 print(f"Columnas disponibles: {list(df_alphas.columns)}")
 
 # COMMAND ----------
 # MAGIC %md
-# MAGIC ## 2. Funciones de Discretización y Transición
+# MAGIC ## 2. Funciones de Discretización y Estimación con Errores Estándar
 
 # COMMAND ----------
 
@@ -40,7 +50,15 @@ def get_markov_states_kmeans(alphas_array, k=4):
     valid_alphas = alphas_array.reshape(-1, 1)
     kmeans = KMeans(n_clusters=k, random_state=SEED, n_init=10)
     states = kmeans.fit_predict(valid_alphas)
-    return states, kmeans.cluster_centers_.flatten()
+    
+    # Reordenar estados para que el menor centroide sea el estado 0 y el mayor sea k-1
+    centroids = kmeans.cluster_centers_.flatten()
+    sort_idx = np.argsort(centroids)
+    rank_map = {old_label: new_rank for new_rank, old_label in enumerate(sort_idx)}
+    states_sorted = np.array([rank_map[s] for s in states])
+    centroids_sorted = centroids[sort_idx]
+    
+    return states_sorted, centroids_sorted
 
 def get_markov_states_quantiles(alphas_array, k=4):
     """Discretiza por cuantiles (benchmark de la tesis)."""
@@ -48,26 +66,39 @@ def get_markov_states_quantiles(alphas_array, k=4):
     states = np.digitize(alphas_array, boundaries)
     return states, boundaries
 
-def estimate_transition_matrix(states, k):
-    """Estima la matriz de transición de Markov."""
-    P = np.zeros((k, k))
+def estimate_transition_matrix_with_errors(states, k):
+    """Estima la matriz de transición de Markov y calcula sus errores estándar y estadísticas."""
+    counts = np.zeros((k, k))
     for i in range(len(states) - 1):
-        P[states[i], states[i+1]] += 1
-    row_sums = P.sum(axis=1)
+        counts[states[i], states[i+1]] += 1
+        
+    row_sums = counts.sum(axis=1)
+    P = np.zeros((k, k))
+    std_errors = np.zeros((k, k))
+    
     for i in range(k):
-        if row_sums[i] > 0:
-            P[i, :] = P[i, :] / row_sums[i]
-    return P
+        n_i = row_sums[i]
+        if n_i > 0:
+            P[i, :] = counts[i, :] / n_i
+            # Error estándar asintótico: sqrt( P_ij * (1 - P_ij) / n_i )
+            for j in range(k):
+                p_ij = P[i, j]
+                std_errors[i, j] = np.sqrt(p_ij * (1.0 - p_ij) / n_i)
+        else:
+            P[i, :] = 1.0 / k
+            std_errors[i, :] = 0.0
+            
+    return P, counts, row_sums, std_errors
 
 # COMMAND ----------
 # MAGIC %md
-# MAGIC ## 3. Procesamiento: K-Medias + Cuantiles para Todos los Combustibles
+# MAGIC ## 3. Procesamiento y Análisis Espectral
 
 # COMMAND ----------
 
-# K* óptimo por combustible según Tabla 5.1 de la tesis
+# K* óptimo por combustible según la tesis
 K_OPTIMO_POR_FUEL = {'Super': 4, 'Regular': 3, 'Diesel': 3, 'Kerosene': 5}
-k_cuantiles = 4  # benchmark fijo
+k_cuantiles = 4  # benchmark fijo de cuantiles
 
 resultados_centroides = []
 resultados_matrices_km = []
@@ -86,109 +117,133 @@ for fuel in combustibles:
     alphas = np.array(df_alphas[col_alpha].fillna(0).values, dtype=float)
     k_optimo = K_OPTIMO_POR_FUEL[fuel]
 
-    # === K-MEDIAS ===
+    # === A. K-MEDIAS (Óptimo) ===
     states_km, centroids = get_markov_states_kmeans(alphas, k=k_optimo)
     df_alphas[f'{fuel}_State'] = states_km
-    print(f"{fuel} K-Means: {k_optimo} estados. Centroides: {np.round(centroids, 6)}")
+    print(f"\n=== {fuel} K-Means: {k_optimo} estados ===")
+    print(f"Centroides: {np.round(centroids, 6)}")
 
     for state_idx, center in enumerate(centroids):
         resultados_centroides.append({
             'Combustible': fuel, 'Estado': state_idx, 'Centroide_Alpha': float(center)
         })
 
-    P_km = estimate_transition_matrix(states_km, k=k_optimo)
+    # Estimar matriz con errores estándar
+    P_km, C_km, n_orig_km, SE_km = estimate_transition_matrix_with_errors(states_km, k=k_optimo)
     for i in range(k_optimo):
         for j in range(k_optimo):
             resultados_matrices_km.append({
-                'Combustible': fuel, 'Estado_Origen': i, 'Estado_Destino': j,
-                'Probabilidad': float(P_km[i, j])
+                'Combustible': fuel, 
+                'Estado_Origen': i, 
+                'Estado_Destino': j,
+                'Probabilidad': float(P_km[i, j]),
+                'Error_Estandar': float(SE_km[i, j]),
+                'Conteo_Transiciones': int(C_km[i, j]),
+                'Total_Origen': int(n_orig_km[i])
             })
 
-    # === CUANTILES (BENCHMARK) ===
+    # === B. CUANTILES (Benchmark) ===
     states_q, boundaries = get_markov_states_quantiles(alphas, k=k_cuantiles)
     df_alphas[f'{fuel}_State_Quantile'] = states_q
-    print(f"{fuel} Cuantiles: boundaries = {np.round(boundaries, 6)}")
 
     for b_idx, b_val in enumerate(boundaries):
         resultados_cuantiles_boundaries.append({
             'Combustible': fuel, 'Boundary_Index': b_idx, 'Boundary_Value': float(b_val)
         })
 
-    P_q = estimate_transition_matrix(states_q, k=k_cuantiles)
+    P_q, C_q, n_orig_q, SE_q = estimate_transition_matrix_with_errors(states_q, k=k_cuantiles)
     for i in range(k_cuantiles):
         for j in range(k_cuantiles):
             resultados_matrices_q.append({
-                'Combustible': fuel, 'Estado_Origen': i, 'Estado_Destino': j,
-                'Probabilidad': float(P_q[i, j])
+                'Combustible': fuel, 
+                'Estado_Origen': i, 
+                'Estado_Destino': j,
+                'Probabilidad': float(P_q[i, j]),
+                'Error_Estandar': float(SE_q[i, j]),
+                'Conteo_Transiciones': int(C_q[i, j]),
+                'Total_Origen': int(n_orig_q[i])
             })
 
-    # Varianza explicada (métrica de defensa: ~97.9%)
-    from sklearn.metrics import calinski_harabasz_score
+    # === C. Varianza Explicada (Métrica de Agrupamiento) ===
     total_variance = np.var(alphas) * len(alphas)
     within_variance = sum(np.var(alphas[states_km == c]) * np.sum(states_km == c) for c in range(k_optimo))
     explained_var_pct = (1 - within_variance / total_variance) * 100 if total_variance > 0 else 0
+    print(f"Varianza explicada por K-medias: {explained_var_pct:.2f}%")
 
-    resultados_centroides_meta = resultados_centroides  # reuse list
-
-    # Prevalencia temporal (% tiempo en cada régimen)
-    for k_idx in range(k_optimo):
-        count = np.sum(states_km == k_idx)
-        pct = count / len(states_km) * 100
-        print(f"  Régimen {k_idx+1}: centroide={centroids[k_idx]:+.6f}, prevalencia={pct:.1f}%")
-
-    print(f"  Varianza explicada: {explained_var_pct:.1f}%")
-
-    # Propiedades espectrales de P
+    # === D. Propiedades Espectrales de P_km ===
     eigenvalues = np.linalg.eigvals(P_km)
     sorted_eigs = np.sort(np.abs(eigenvalues))[::-1]
-    # Distribución estacionaria (autovector izquierdo de eigenvalue=1)
+    
+    # Distribución estacionaria (autovector izquierdo de eigenvalue=1, que es derecho de P.T)
     eig_vals, eig_vecs = np.linalg.eig(P_km.T)
     idx_one = np.argmin(np.abs(eig_vals - 1.0))
     pi_stationary = np.real(eig_vecs[:, idx_one])
     pi_stationary = pi_stationary / pi_stationary.sum()
+    
+    # Brecha espectral y tiempo de mezcla (con epsilon = 0.01)
+    lambda_2 = sorted_eigs[1] if len(sorted_eigs) > 1 else 0
+    spectral_gap = 1.0 - lambda_2
+    mixing_time = -np.log(0.01) / spectral_gap if spectral_gap > 0 and lambda_2 < 1.0 else 0
 
     resultados_propiedades_espectrales.append({
         'Combustible': fuel,
         'K_Optimo': k_optimo,
         'Varianza_Explicada_Pct': float(explained_var_pct),
         'Eigenvalue_Dominante': float(sorted_eigs[0]),
-        'Eigenvalue_2': float(sorted_eigs[1]) if len(sorted_eigs) > 1 else 0,
-        'Spectral_Gap': float(1 - sorted_eigs[1]) if len(sorted_eigs) > 1 else 0,
-        'Mixing_Time_Approx': float(-1 / np.log(sorted_eigs[1])) if len(sorted_eigs) > 1 and sorted_eigs[1] > 0 and sorted_eigs[1] < 1 else 0,
+        'Eigenvalue_2': float(lambda_2),
+        'Spectral_Gap': float(spectral_gap),
+        'Mixing_Time_Approx': float(mixing_time),
         'Pi_Estacionaria': str([round(float(x), 6) for x in pi_stationary]),
     })
-    print()
+    
+    print(f"Brecha espectral (gamma): {spectral_gap:.6f}")
+    print(f"Tiempo de mezcla estimado: {mixing_time:.2f} semanas")
+    print(f"Distribución Estacionaria pi: {[round(float(x), 4) for x in pi_stationary]}")
 
 # COMMAND ----------
 # MAGIC %md
-# MAGIC ## 4. Guardar Resultados en Gold
+# MAGIC ## 4. Guardar Resultados en Capa Gold
 
 # COMMAND ----------
 
 # 4a. Centroides K-Medias
-spark.createDataFrame(pd.DataFrame(resultados_centroides)).write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(f"{CATALOG}.gold.tesis_cap3_centroides")
-print("✅ tesis_cap3_centroides")
+spark.createDataFrame(pd.DataFrame(resultados_centroides)).write \
+    .mode("overwrite") \
+    .option("overwriteSchema", "true") \
+    .saveAsTable(f"{CATALOG}.gold.tesis_cap3_centroides")
+print("✅ gold.tesis_cap3_centroides")
 
-# 4b. Matrices K-Medias
-spark.createDataFrame(pd.DataFrame(resultados_matrices_km)).write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(f"{CATALOG}.gold.tesis_cap3_matrices_transicion")
-print("✅ tesis_cap3_matrices_transicion")
+# 4b. Matrices K-Medias con Errores Estándar
+spark.createDataFrame(pd.DataFrame(resultados_matrices_km)).write \
+    .mode("overwrite") \
+    .option("overwriteSchema", "true") \
+    .saveAsTable(f"{CATALOG}.gold.tesis_cap3_matrices_transicion")
+print("✅ gold.tesis_cap3_matrices_transicion")
 
 # 4c. Boundaries Cuantiles
-spark.createDataFrame(pd.DataFrame(resultados_cuantiles_boundaries)).write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(f"{CATALOG}.gold.tesis_cap5_cuantiles_boundaries")
-print("✅ tesis_cap5_cuantiles_boundaries")
+spark.createDataFrame(pd.DataFrame(resultados_cuantiles_boundaries)).write \
+    .mode("overwrite") \
+    .option("overwriteSchema", "true") \
+    .saveAsTable(f"{CATALOG}.gold.tesis_cap5_cuantiles_boundaries")
+print("✅ gold.tesis_cap5_cuantiles_boundaries")
 
-# 4d. Matrices Cuantiles
-spark.createDataFrame(pd.DataFrame(resultados_matrices_q)).write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(f"{CATALOG}.gold.tesis_cap5_cuantiles_matrices")
-print("✅ tesis_cap5_cuantiles_matrices")
+# 4d. Matrices Cuantiles con Errores Estándar
+spark.createDataFrame(pd.DataFrame(resultados_matrices_q)).write \
+    .mode("overwrite") \
+    .option("overwriteSchema", "true") \
+    .saveAsTable(f"{CATALOG}.gold.tesis_cap5_cuantiles_matrices")
+print("✅ gold.tesis_cap5_cuantiles_matrices")
 
-# 4e. Alphas con AMBOS tipos de estados (K-Medias + Cuantiles)
-spark.createDataFrame(df_alphas).write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(f"{CATALOG}.gold.tesis_alphas_con_estados")
-print("✅ tesis_alphas_con_estados")
-print(f"Columnas finales: {list(df_alphas.columns)}")
+# 4e. Alphas con Estados (K-Medias + Cuantiles)
+spark.createDataFrame(df_alphas).write \
+    .mode("overwrite") \
+    .option("overwriteSchema", "true") \
+    .saveAsTable(f"{CATALOG}.gold.tesis_alphas_con_estados")
+print("✅ gold.tesis_alphas_con_estados")
 
-# 4f. Propiedades espectrales + Varianza explicada
-if resultados_propiedades_espectrales:
-    spark.createDataFrame(pd.DataFrame(resultados_propiedades_espectrales)).write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(f"{CATALOG}.gold.tesis_cap3_propiedades_espectrales")
-    avg_var = np.mean([r['Varianza_Explicada_Pct'] for r in resultados_propiedades_espectrales])
-    print(f"✅ tesis_cap3_propiedades_espectrales")
-    print(f"\n=== VARIANZA EXPLICADA PROMEDIO: {avg_var:.1f}% ===")
+# 4f. Propiedades Espectrales
+spark.createDataFrame(pd.DataFrame(resultados_propiedades_espectrales)).write \
+    .mode("overwrite") \
+    .option("overwriteSchema", "true") \
+    .saveAsTable(f"{CATALOG}.gold.tesis_cap3_propiedades_espectrales")
+print("✅ gold.tesis_cap3_propiedades_espectrales")
