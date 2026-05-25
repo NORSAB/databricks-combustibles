@@ -196,12 +196,19 @@ for fuel in combustibles:
     P, C, n_orig, SE = estimate_transition_matrix_with_errors(states, k=K_ESTADOS)
     for i in range(K_ESTADOS):
         for j in range(K_ESTADOS):
+            p_val = float(P[i, j])
+            se_val = float(SE[i, j])
+            # Intervalo de confianza asintótico al 95% (z_alpha/2 = 1.96)
+            ci_lower = max(0.0, p_val - 1.96 * se_val)
+            ci_upper = min(1.0, p_val + 1.96 * se_val)
             resultados_matrices.append({
                 'Combustible': fuel, 
                 'Estado_Origen': i, 
                 'Estado_Destino': j,
-                'Probabilidad': float(P[i, j]),
-                'Error_Estandar': float(SE[i, j]),
+                'Probabilidad': p_val,
+                'Error_Estandar': se_val,
+                'Limite_Inferior_95': ci_lower,
+                'Limite_Superior_95': ci_upper,
                 'Conteo_Transiciones': int(C[i, j]),
                 'Total_Origen': int(n_orig[i])
             })
@@ -340,3 +347,30 @@ spark.createDataFrame(pd.DataFrame(resultados_propiedades_espectrales)).write \
     .option("overwriteSchema", "true") \
     .saveAsTable(f"{CATALOG}.gold.tesis_cap3_propiedades_espectrales")
 print("✅ gold.tesis_cap3_propiedades_espectrales")
+
+# COMMAND ----------
+# MAGIC %md
+# MAGIC ## 5. Gráfico Teórico del Tamaño Efectivo de Muestra (W_eff)
+# MAGIC 
+# MAGIC Generamos la ilustración matemática de la tesis que muestra cómo $W_{\text{eff}} = \frac{1-\lambda^W}{1-\lambda}$ decrece conforme $\lambda$ se reduce, para ventanas $W \in \{12, 26, 52\}$.
+
+# COMMAND ----------
+
+lambdas = np.linspace(0.05, 0.995, 200)
+
+plt.figure(figsize=(8, 5))
+for W, color, style in [(52, '#5E81AC', '-'), (26, '#BF616A', '--'), (12, '#A3BE8C', ':')]:
+    w_eff = (1.0 - lambdas**W) / (1.0 - lambdas + 1e-15)
+    plt.plot(lambdas, w_eff, label=f'W = {W}', color=color, linestyle=style, linewidth=2)
+
+plt.title("Tamaño Efectivo de Muestra ($W_{eff}$) en función de $\lambda$", fontsize=12, fontweight='bold', pad=12)
+plt.xlabel("Parámetro de decaimiento ($\lambda$)", fontsize=10)
+plt.ylabel("Tamaño efectivo ($W_{eff}$)", fontsize=10)
+plt.grid(True, linestyle=':', alpha=0.6)
+plt.legend(loc='upper left')
+plt.tight_layout()
+
+weff_chart_path = f"{CHARTS_DIR}/weff_lambda_comparison.png"
+plt.savefig(weff_chart_path, dpi=150)
+plt.close()
+print(f"✅ Gráfico teórico de W_eff guardado en: {weff_chart_path}")
