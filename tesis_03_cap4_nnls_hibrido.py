@@ -118,23 +118,29 @@ def estimate_P_from_C(C):
     return C / col_sums
 
 def SRep(datos, ss):
-    """Estimación NNLS/SRep (Ap) con restricciones de columnas unitarias."""
+    """Estimación NNLS/SRep (Ap) con restricciones de columnas unitarias y regularización progresiva."""
     n0 = datos.shape[0]
     S0 = datos[:, :ss]
     S0 = kron(S0, identity(n0)).T
     S1 = S0.T @ ((datos[:, 1:(1 + ss)]).T).reshape(ss * n0)
     C_mat = kron(identity(n0), ones((1, n0)))
     Mr = zeros((n0**2 + n0, n0**2))
-    Mr[:n0**2, :] = S0.T @ S0
-    Mr[n0**2:, :] = C_mat
-    rhs = zeros((n0**2 + n0))
-    rhs[:n0**2] = S1
-    rhs[n0**2:] = 1
-    c = zeros((n0**2, 1))
-    c[:, 0] = nnls(Mr, rhs)[0]
-    Pr = c.reshape(n0, n0).T
-    Pr = Pr @ diag(1 / np.sum(Pr, axis=0))
-    return Pr
+    
+    for epsilon in [0.0, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2]:
+        try:
+            Mr[:n0**2, :] = S0.T @ S0 + epsilon * identity(n0**2)
+            Mr[n0**2:, :] = C_mat
+            rhs = zeros((n0**2 + n0))
+            rhs[:n0**2] = S1
+            rhs[n0**2:] = 1
+            c = zeros((n0**2, 1))
+            c[:, 0] = nnls(Mr, rhs)[0]
+            Pr = c.reshape(n0, n0).T
+            Pr = Pr @ diag(1 / np.sum(Pr, axis=0))
+            return Pr
+        except RuntimeError:
+            continue
+    raise RuntimeError("NNLS no pudo converger incluso con regularización progresiva.")
 
 def compute_Ap(P):
     """Calcula Ap vía simulación de probabilidades de estado + SRep."""
@@ -174,7 +180,7 @@ results_centroids_opt = []
 combustibles = ['Regular', 'Super', 'Diesel', 'Kerosene']
 grid_results_by_fuel = {}
 
-train_end = 312  # Enero 2017 a Diciembre 2022 para entrenamiento inicial (6 años)
+train_end = int(len(df_prices) * 0.8)  # Usar 80% de la serie para entrenamiento inicial (ajuste dinámico)
 
 for fuel in combustibles:
     if fuel not in df_prices.columns:
