@@ -178,7 +178,7 @@ for fuel in combustibles:
     if fuel not in df_silver.columns:
         print(f"  Columna {fuel} no encontrada en Silver, saltando.")
         continue
-    series = df_silver[fuel].ffill().bfill()
+    series = df_silver[fuel].ffill().bfill().astype(float)
 
     for w in w_range:
         for l in lambda_range:
@@ -235,7 +235,7 @@ resultados_quiebres = []
 for _, row in df_best.iterrows():
     fuel = row['Combustible']
     if fuel in df_silver.columns:
-        series_vals = df_silver[fuel].ffill().bfill().values
+        series_vals = df_silver[fuel].ffill().bfill().astype(float).values
         alphas = calculate_alphas_fast(series_vals, int(row['W']), row['Lambda'])
         breaks = detect_structural_breaks(alphas)
         for b in breaks:
@@ -318,7 +318,7 @@ for _, row in df_best.iterrows():
     fuel = row['Combustible']
     if fuel not in df_silver.columns:
         continue
-    series = df_silver[fuel].ffill().bfill()
+    series = df_silver[fuel].ffill().bfill().astype(float)
     w_opt = int(row['W'])
     l_opt = row['Lambda']
     k_opt = int(row['k'])
