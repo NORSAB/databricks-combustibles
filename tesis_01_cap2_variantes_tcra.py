@@ -194,6 +194,15 @@ def select_optimal_params(df_results, fuel_name):
 
 # COMMAND ----------
 
+# Limpieza explícita de tablas Gold de salida antes de iniciar el procesamiento
+print("Limpiando tablas Gold preexistentes antes de iniciar la búsqueda en rejilla...")
+for table_name in ['tesis_cap2_grid_performance', 'tesis_cap2_best_hyperparams', 'tesis_alphas_combustibles_optimos', 'tesis_alphas_combustibles']:
+    try:
+        spark.sql(f"DROP TABLE IF EXISTS {CATALOG}.gold.{table_name}")
+        print(f"  * Tabla {table_name} eliminada exitosamente.")
+    except Exception as e:
+        print(f"  * Advertencia al intentar limpiar {table_name}: {e}")
+
 combustibles = ['Super', 'Regular', 'Diesel', 'Kerosene']
 all_grid_results = []
 summary_best_dfs = []
