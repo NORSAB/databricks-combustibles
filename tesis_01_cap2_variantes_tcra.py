@@ -80,6 +80,8 @@ def run_grid_search(fuel_name, series):
     b = v[:-1] ** 2
     
     for W in w_range:
+        if 3 <= W <= 9:
+            continue
         for lambd in lambda_range:
             # Clasificar variantes
             if W == 2:
@@ -119,7 +121,9 @@ def select_optimal_params(df_results, fuel_name):
     """Selecciona los parámetros óptimos para cada una de las 4 variantes
     aplicando el protocolo de promedio de hiperparámetros óptimos por partición,
     y luego elige la mejor variante global."""
-    df_fuel = df_results[df_results['Combustible'] == fuel_name]
+    # Excluir explícitamente cualquier registro histórico inválido con W entre 3 y 9
+    df_clean = df_results[~((df_results['W'] >= 3) & (df_results['W'] <= 9))].copy()
+    df_fuel = df_clean[df_clean['Combustible'] == fuel_name]
     partitions = df_fuel['Particion'].unique()
     variants = ['TCRA', 'ETCRA', 'TCRAM', 'ETCRAM']
     
