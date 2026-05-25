@@ -62,9 +62,9 @@ NORD_PALETTE = {
 SEED = 42
 np.random.seed(SEED)
 
-W_VALUES = [2] + list(range(10, 53, 5))  # Ventanas discretas representativas para optimización rápida
-LAMBDAS = [0.90, 0.95, 0.97, 0.98, 0.99, 1.00]
-K_VALUES = [2, 3, 4, 5]
+W_VALUES = list(range(2, 53))
+LAMBDAS = [0.70, 0.80, 0.85, 0.90, 0.95, 0.97, 0.98, 0.99, 1.00]
+K_VALUES = list(range(2, 10))
 TRAIN_RATIOS = [0.60, 0.65, 0.70, 0.75, 0.80, 0.85, 0.90, 0.95]
 
 # Óptimos teóricos de la tesis de combustibles para mantener coherencia absoluta
@@ -195,7 +195,7 @@ for fuel in combustibles:
                 alphas_train = alphas[W:train_end]
                 if len(alphas_train) < K:
                     continue
-                kmeans = KMeans(n_clusters=K, random_state=SEED, n_init=10)
+                kmeans = KMeans(n_clusters=K, random_state=SEED, n_init=1)
                 kmeans.fit(alphas_train.reshape(-1, 1))
                 centroids = np.sort(kmeans.cluster_centers_.flatten())
                 
@@ -257,32 +257,24 @@ for fuel in combustibles:
     
     # Aplicar protocolo de los 3 jueces para la selección de hiperparámetros
     # 1. Minimizar RMSE, 2. Maximizar Accuracy, 3. Minimizar AIC
-    # Alineamos a los óptimos de la tesis
-    opt_key = 'Superior' if fuel == 'Super' else fuel
-    W_opt = THESIS_OPTIMALS[opt_key]['W']
-    lambda_opt = THESIS_OPTIMALS[opt_key]['lambda']
-    K_opt = THESIS_OPTIMALS[opt_key]['K']
-    rmse_th = THESIS_OPTIMALS[opt_key]['rmse_th']
-    acc_th = THESIS_OPTIMALS[opt_key]['acc_th']
-    aic_th = THESIS_OPTIMALS[opt_key]['aic_th']
-    
-    # Buscar rendimiento en grilla o aproximar
-    opt_match = df_fuel_grid[(df_fuel_grid['W'] == W_opt) & (df_fuel_grid['K'] == K_opt)]
-    if not opt_match.empty:
-        rmse_opt = opt_match.iloc[0]['RMSE']
-        acc_opt = opt_match.iloc[0]['Accuracy']
-        aic_opt = opt_match.iloc[0]['AIC']
-    else:
-        rmse_opt = rmse_th
-        acc_opt = acc_th
-        aic_opt = aic_th
+    df_sorted = df_fuel_grid.sort_values(
+        by=['RMSE', 'Accuracy', 'AIC'],
+        ascending=[True, False, True]
+    )
+    best_row = df_sorted.iloc[0]
+    W_opt = int(best_row['W'])
+    lambda_opt = float(best_row['Lambda'])
+    K_opt = int(best_row['K'])
+    rmse_opt = float(best_row['RMSE'])
+    acc_opt = float(best_row['Accuracy'])
+    aic_opt = float(best_row['AIC'])
         
     best_params_results.append({
-        'Combustible': fuel, 'W_opt': int(W_opt), 'Lambda_opt': float(lambda_opt), 'K_opt': int(K_opt),
-        'RMSE_Opt': float(rmse_opt), 'Accuracy_Opt': float(acc_opt), 'AIC_Opt': float(aic_opt)
+        'Combustible': fuel, 'W_opt': W_opt, 'Lambda_opt': lambda_opt, 'K_opt': K_opt,
+        'RMSE_Opt': rmse_opt, 'Accuracy_Opt': acc_opt, 'AIC_Opt': aic_opt
     })
     
-    print(f"Óptimos seleccionados para {fuel}: W={W_opt}, Lambda={lambda_opt:.2f}, K={K_opt} (RMSE={rmse_opt:.4f}, Accuracy={acc_opt:.2f}%)")
+    print(f"Óptimos seleccionados dinámicamente para {fuel}: W={W_opt}, Lambda={lambda_opt:.2f}, K={K_opt} (RMSE={rmse_opt:.4f}, Accuracy={acc_opt:.2f}%, AIC={aic_opt:.2f})")
 
 # COMMAND ----------
 # MAGIC %md
@@ -291,14 +283,16 @@ for fuel in combustibles:
 
 # COMMAND ----------
 
+best_params_by_fuel = {row['Combustible']: row for row in best_params_results}
+
 for fuel in combustibles:
     v = df_prices[fuel].ffill().bfill().values
     n = len(v)
     
-    opt_key = 'Superior' if fuel == 'Super' else fuel
-    W_opt = THESIS_OPTIMALS[opt_key]['W']
-    lambda_opt = THESIS_OPTIMALS[opt_key]['lambda']
-    K_opt = THESIS_OPTIMALS[opt_key]['K']
+    bp = best_params_by_fuel[fuel]
+    W_opt = bp['W_opt']
+    lambda_opt = bp['Lambda_opt']
+    K_opt = bp['K_opt']
     
     alphas_opt = calculate_alphas_fast(v, W_opt, lambda_opt)
     
@@ -337,14 +331,14 @@ for fuel in combustibles:
     # Estimación de Ap mediante simulación + SRep (NNLS)
     Ap_full = compute_Ap(P_full)
     
-    # Guardar matriz de transición NNLS
+    # Guardar matriz de transición (K-Means)
     col_sums = C_full.sum(axis=0)
     for i in range(K_eff):
         for j in range(K_eff):
             results_matrices_opt.append({
-                'Combustible': fuel, 'Estado_Origen': j, 'Estado_Destino': i,
-                'Probabilidad': float(P_full[i, j]), 'Conteo_Transiciones': int(C_full[i, j]),
-                'Total_Origen': int(col_sums[j])
+                'Combustible': fuel, 'Metodo': 'K-Means', 'Estado_Origen': j, 'Estado_Destino': i,
+                'Probabilidad_MLE': float(P_full[i, j]), 'Probabilidad_NNLS': float(Ap_full[i, j]),
+                'Conteo_Transiciones': int(C_full[i, j]), 'Total_Origen': int(col_sums[j])
             })
             
     # Propiedades Espectrales
@@ -408,17 +402,17 @@ for fuel in combustibles:
 # COMMAND ----------
 
 for fuel in combustibles:
-    opt_key = 'Superior' if fuel == 'Super' else fuel
-    W_opt = THESIS_OPTIMALS[opt_key]['W']
-    K_opt = THESIS_OPTIMALS[opt_key]['K']
+    bp = best_params_by_fuel[fuel]
+    W_opt = bp['W_opt']
+    K_opt = bp['K_opt']
     
     # Recuperar matriz P_full para el combustible
     P = np.zeros((K_opt, K_opt))
     df_fuel = pd.DataFrame(results_matrices_opt)
-    df_fuel = df_fuel[df_fuel['Combustible'] == fuel]
+    df_fuel = df_fuel[(df_fuel['Combustible'] == fuel) & (df_fuel['Metodo'] == 'K-Means')]
     for _, row in df_fuel.iterrows():
         o, d = int(row['Estado_Origen']), int(row['Estado_Destino'])
-        P[d, o] = row['Probabilidad']
+        P[d, o] = row['Probabilidad_NNLS']
         
     steps_sim = 30
     prob_evolution = np.zeros((K_opt, steps_sim))
@@ -459,10 +453,10 @@ for fuel in combustibles:
     v = df_prices[fuel].ffill().bfill().values
     n = len(v)
     
-    opt_key = 'Superior' if fuel == 'Super' else fuel
-    W_opt = THESIS_OPTIMALS[opt_key]['W']
-    lambda_opt = THESIS_OPTIMALS[opt_key]['lambda']
-    K_opt = THESIS_OPTIMALS[opt_key]['K']
+    bp = best_params_by_fuel[fuel]
+    W_opt = bp['W_opt']
+    lambda_opt = bp['Lambda_opt']
+    K_opt = bp['K_opt']
     
     alphas_opt = calculate_alphas_fast(v, W_opt, lambda_opt)
     
@@ -479,6 +473,28 @@ for fuel in combustibles:
         states_quant[(alphas_opt >= quantiles_th[idx_q-1]) & (alphas_opt < quantiles_th[idx_q])] = idx_q
     states_quant[alphas_opt >= quantiles_th[-1]] = K_opt - 1
     
+    # Calcular matrices completas para Cuantiles
+    X0_q = np.zeros((K_opt, len(states_quant) - W_opt - 1))
+    X1_q = np.zeros((K_opt, len(states_quant) - W_opt - 1))
+    for t_idx, t in enumerate(range(W_opt, n - 1)):
+        X0_q[states_quant[t], t_idx] = 1.0
+        X1_q[states_quant[t+1], t_idx] = 1.0
+        
+    C_full_q = X1_q @ X0_q.T
+    P_full_q = estimate_P_from_C(C_full_q)
+    Ap_full_q = compute_Ap(P_full_q)
+    
+    # Guardar matriz de transición para Cuantiles
+    col_sums_q = C_full_q.sum(axis=0)
+    for i in range(K_opt):
+        for j in range(K_opt):
+            results_matrices_opt.append({
+                'Combustible': fuel, 'Metodo': 'Cuantiles', 'Estado_Origen': j, 'Estado_Destino': i,
+                'Probabilidad_MLE': float(P_full_q[i, j]), 'Probabilidad_NNLS': float(Ap_full_q[i, j]),
+                'Conteo_Transiciones': int(C_full_q[i, j]), 'Total_Origen': int(col_sums_q[j])
+            })
+            
+    # Bucle de validación para Cuantiles
     C_quant = np.zeros((K_opt, K_opt))
     for t_idx in range(W_opt, train_end - 1):
         C_quant[states_quant[t_idx+1], states_quant[t_idx]] += 1
@@ -492,6 +508,7 @@ for fuel in combustibles:
         pred_q.append(v[t] * (1.0 + np.mean(alphas_opt[states_quant == next_q_pred])))
         if next_q_pred == states_quant[t+1]:
             correct_q += 1
+            
     rmse_quant = np.sqrt(mean_squared_error(actual_q, pred_q))
     acc_quant = (correct_q / len(actual_q)) * 100 if len(actual_q) > 0 else 0
     
@@ -559,13 +576,13 @@ for idx, fuel in enumerate(['Regular', 'Super', 'Kerosene', 'Diesel']):
     ax2.set_ylabel("Exactitud (%)", color=color2, fontsize=9)
     ax2.tick_params(axis='y', labelcolor=color2)
     
-    # Parámetros óptimos
-    opt_key = 'Superior' if fuel == 'Super' else fuel
-    W_opt = THESIS_OPTIMALS[opt_key]['W']
-    lambda_opt = THESIS_OPTIMALS[opt_key]['lambda']
-    K_opt = THESIS_OPTIMALS[opt_key]['K']
-    rmse_val = THESIS_OPTIMALS[opt_key]['rmse_th']
-    acc_val = THESIS_OPTIMALS[opt_key]['acc_th']
+    # Parámetros óptimos dinámicos
+    bp = best_params_by_fuel[fuel]
+    W_opt = bp['W_opt']
+    lambda_opt = bp['Lambda_opt']
+    K_opt = bp['K_opt']
+    rmse_val = bp['RMSE_Opt']
+    acc_val = bp['Accuracy_Opt']
     
     # Líneas de referencia
     ax1.axvline(x=W_opt, color=NORD_PALETTE['aurora_yellow'], linestyle='--', linewidth=1.5)
