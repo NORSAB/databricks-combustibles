@@ -169,8 +169,9 @@ results_precios_semanales_opt = []
 results_matrices_opt = []
 results_propiedades_espectrales_opt = []
 results_comparativos = []
+results_centroids_opt = []
 
-combustibles = ['Regular', 'Superior', 'Diesel', 'Kerosene']
+combustibles = ['Regular', 'Super', 'Diesel', 'Kerosene']
 grid_results_by_fuel = {}
 
 train_end = 312  # Enero 2017 a Diciembre 2022 para entrenamiento inicial (6 años)
@@ -257,12 +258,13 @@ for fuel in combustibles:
     # Aplicar protocolo de los 3 jueces para la selección de hiperparámetros
     # 1. Minimizar RMSE, 2. Maximizar Accuracy, 3. Minimizar AIC
     # Alineamos a los óptimos de la tesis
-    W_opt = THESIS_OPTIMALS[fuel]['W']
-    lambda_opt = THESIS_OPTIMALS[fuel]['lambda']
-    K_opt = THESIS_OPTIMALS[fuel]['K']
-    rmse_th = THESIS_OPTIMALS[fuel]['rmse_th']
-    acc_th = THESIS_OPTIMALS[fuel]['acc_th']
-    aic_th = THESIS_OPTIMALS[fuel]['aic_th']
+    opt_key = 'Superior' if fuel == 'Super' else fuel
+    W_opt = THESIS_OPTIMALS[opt_key]['W']
+    lambda_opt = THESIS_OPTIMALS[opt_key]['lambda']
+    K_opt = THESIS_OPTIMALS[opt_key]['K']
+    rmse_th = THESIS_OPTIMALS[opt_key]['rmse_th']
+    acc_th = THESIS_OPTIMALS[opt_key]['acc_th']
+    aic_th = THESIS_OPTIMALS[opt_key]['aic_th']
     
     # Buscar rendimiento en grilla o aproximar
     opt_match = df_fuel_grid[(df_fuel_grid['W'] == W_opt) & (df_fuel_grid['K'] == K_opt)]
@@ -293,9 +295,10 @@ for fuel in combustibles:
     v = df_prices[fuel].ffill().bfill().values
     n = len(v)
     
-    W_opt = THESIS_OPTIMALS[fuel]['W']
-    lambda_opt = THESIS_OPTIMALS[fuel]['lambda']
-    K_opt = THESIS_OPTIMALS[fuel]['K']
+    opt_key = 'Superior' if fuel == 'Super' else fuel
+    W_opt = THESIS_OPTIMALS[opt_key]['W']
+    lambda_opt = THESIS_OPTIMALS[opt_key]['lambda']
+    K_opt = THESIS_OPTIMALS[opt_key]['K']
     
     alphas_opt = calculate_alphas_fast(v, W_opt, lambda_opt)
     
@@ -304,6 +307,14 @@ for fuel in combustibles:
     kmeans_opt.fit(alphas_opt[W_opt:train_end].reshape(-1, 1))
     centroids_opt = np.sort(kmeans_opt.cluster_centers_.flatten())
     
+    # Guardar centroides
+    for state_i, centroid_val in enumerate(centroids_opt):
+        results_centroids_opt.append({
+            'Combustible': fuel,
+            'Estado': state_i,
+            'Centroide_Alpha': float(centroid_val)
+        })
+        
     states_opt = np.zeros(n, dtype=int)
     for t in range(W_opt, n):
         states_opt[t] = np.argmin(np.abs(alphas_opt[t] - centroids_opt))
@@ -397,8 +408,9 @@ for fuel in combustibles:
 # COMMAND ----------
 
 for fuel in combustibles:
-    W_opt = THESIS_OPTIMALS[fuel]['W']
-    K_opt = THESIS_OPTIMALS[fuel]['K']
+    opt_key = 'Superior' if fuel == 'Super' else fuel
+    W_opt = THESIS_OPTIMALS[opt_key]['W']
+    K_opt = THESIS_OPTIMALS[opt_key]['K']
     
     # Recuperar matriz P_full para el combustible
     P = np.zeros((K_opt, K_opt))
@@ -447,9 +459,10 @@ for fuel in combustibles:
     v = df_prices[fuel].ffill().bfill().values
     n = len(v)
     
-    W_opt = THESIS_OPTIMALS[fuel]['W']
-    lambda_opt = THESIS_OPTIMALS[fuel]['lambda']
-    K_opt = THESIS_OPTIMALS[fuel]['K']
+    opt_key = 'Superior' if fuel == 'Super' else fuel
+    W_opt = THESIS_OPTIMALS[opt_key]['W']
+    lambda_opt = THESIS_OPTIMALS[opt_key]['lambda']
+    K_opt = THESIS_OPTIMALS[opt_key]['K']
     
     alphas_opt = calculate_alphas_fast(v, W_opt, lambda_opt)
     
@@ -522,7 +535,7 @@ for fuel in combustibles:
 fig, axes = plt.subplots(2, 2, figsize=(14, 9))
 axes_flat = axes.flatten()
 
-for idx, fuel in enumerate(['Regular', 'Superior', 'Kerosene', 'Diesel']):
+for idx, fuel in enumerate(['Regular', 'Super', 'Kerosene', 'Diesel']):
     ax1 = axes_flat[idx]
     
     # Filtrar resultados de grilla para este combustible
@@ -547,11 +560,12 @@ for idx, fuel in enumerate(['Regular', 'Superior', 'Kerosene', 'Diesel']):
     ax2.tick_params(axis='y', labelcolor=color2)
     
     # Parámetros óptimos
-    W_opt = THESIS_OPTIMALS[fuel]['W']
-    lambda_opt = THESIS_OPTIMALS[fuel]['lambda']
-    K_opt = THESIS_OPTIMALS[fuel]['K']
-    rmse_val = THESIS_OPTIMALS[fuel]['rmse_th']
-    acc_val = THESIS_OPTIMALS[fuel]['acc_th']
+    opt_key = 'Superior' if fuel == 'Super' else fuel
+    W_opt = THESIS_OPTIMALS[opt_key]['W']
+    lambda_opt = THESIS_OPTIMALS[opt_key]['lambda']
+    K_opt = THESIS_OPTIMALS[opt_key]['K']
+    rmse_val = THESIS_OPTIMALS[opt_key]['rmse_th']
+    acc_val = THESIS_OPTIMALS[opt_key]['acc_th']
     
     # Líneas de referencia
     ax1.axvline(x=W_opt, color=NORD_PALETTE['aurora_yellow'], linestyle='--', linewidth=1.5)
@@ -560,7 +574,7 @@ for idx, fuel in enumerate(['Regular', 'Superior', 'Kerosene', 'Diesel']):
     # Punto de intersección
     ax1.plot(W_opt, rmse_val, color=NORD_PALETTE['aurora_yellow'], marker='o', markersize=6)
     
-    ax1.set_title(f"Combustible: {fuel}", fontsize=11, fontweight='bold', pad=10)
+    ax1.set_title(f"Combustible: {'Superior' if fuel == 'Super' else fuel}", fontsize=11, fontweight='bold', pad=10)
     ax1.grid(True, linestyle=':', alpha=0.4)
     
     # Agregar leyenda y texto informativo
@@ -643,3 +657,10 @@ spark.createDataFrame(pd.DataFrame(grid_runs_all)).write \
     .option("overwriteSchema", "true") \
     .saveAsTable(f"{CATALOG}.gold.tesis_cap4_detalle_grid")
 print("✅ gold.tesis_cap4_detalle_grid")
+
+# 8i. Centroides K-medias del modelo óptimo
+spark.createDataFrame(pd.DataFrame(results_centroids_opt)).write \
+    .mode("overwrite") \
+    .option("overwriteSchema", "true") \
+    .saveAsTable(f"{CATALOG}.gold.tesis_cap4_centroides")
+print("✅ gold.tesis_cap4_centroides")
