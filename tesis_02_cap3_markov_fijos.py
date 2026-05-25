@@ -91,30 +91,30 @@ def get_markov_states_fixed(alphas_array, thresholds=[0.04, 0.02, -0.01]):
 def estimate_transition_matrix_with_errors(states, k=4):
     """
     Estima la matriz de transición de Markov y calcula sus errores estándar y estadísticas.
-    P_ij = P(ir a estado j | estar en estado i) -> Suma de filas es 1.
-    Nota: Se utiliza la convención matemática P[i, j] = P(S_{t+1} = j | S_t = i).
+    P_ij = P(S_{t+1} = i | S_t = j) -> Suma de columnas es 1 (fila = destino, columna = origen).
     """
     counts = np.zeros((k, k))
-    for i in range(len(states) - 1):
-        counts[states[i], states[i+1]] += 1
+    for t in range(len(states) - 1):
+        # Fila i es el destino (t+1), columna j es el origen (t)
+        counts[states[t+1], states[t]] += 1
         
-    row_sums = counts.sum(axis=1)
+    col_sums = counts.sum(axis=0) # Total de salidas del estado de origen j (N_.j)
     P = np.zeros((k, k))
     std_errors = np.zeros((k, k))
     
-    for i in range(k):
-        n_i = row_sums[i]
-        if n_i > 0:
-            P[i, :] = counts[i, :] / n_i
-            # Error estándar asintótico: sqrt( P_ij * (1 - P_ij) / n_i )
-            for j in range(k):
+    for j in range(k):
+        n_j = col_sums[j]
+        if n_j > 0:
+            P[:, j] = counts[:, j] / n_j
+            # Error estándar asintótico: sqrt( P_ij * (1 - P_ij) / n_j )
+            for i in range(k):
                 p_ij = P[i, j]
-                std_errors[i, j] = np.sqrt(p_ij * (1.0 - p_ij) / n_i)
+                std_errors[i, j] = np.sqrt(p_ij * (1.0 - p_ij) / n_j)
         else:
-            P[i, :] = 1.0 / k
-            std_errors[i, :] = 0.0
+            P[:, j] = 1.0 / k
+            std_errors[:, j] = 0.0
             
-    return P, counts, row_sums, std_errors
+    return P, counts, col_sums, std_errors
 
 # COMMAND ----------
 # MAGIC %md
@@ -203,14 +203,14 @@ for fuel in combustibles:
             ci_upper = min(1.0, p_val + 1.96 * se_val)
             resultados_matrices.append({
                 'Combustible': fuel, 
-                'Estado_Origen': i, 
-                'Estado_Destino': j,
+                'Estado_Origen': j, 
+                'Estado_Destino': i,
                 'Probabilidad': p_val,
                 'Error_Estandar': se_val,
                 'Limite_Inferior_95': ci_lower,
                 'Limite_Superior_95': ci_upper,
                 'Conteo_Transiciones': int(C[i, j]),
-                'Total_Origen': int(n_orig[i])
+                'Total_Origen': int(n_orig[j])
             })
 
     # === C. Propiedades Espectrales ===
@@ -218,8 +218,8 @@ for fuel in combustibles:
     # Ordenar por magnitud absoluta descendente
     sorted_eigs = np.sort(np.abs(eigenvalues))[::-1]
     
-    # Distribución estacionaria (autovector izquierdo con autovalor 1, que es derecho de P.T)
-    eig_vals, eig_vecs = np.linalg.eig(P.T)
+    # Distribución estacionaria (autovector derecho para P * pi = pi ya que es estocástica por columnas)
+    eig_vals, eig_vecs = np.linalg.eig(P)
     idx_one = np.argmin(np.abs(eig_vals - 1.0))
     pi_stationary = np.real(eig_vecs[:, idx_one])
     pi_stationary = pi_stationary / pi_stationary.sum()
@@ -281,10 +281,10 @@ for fuel in combustibles:
     sns.heatmap(P, annot=annot_labels, fmt='', cmap="Blues", cbar=True,
                 xticklabels=labels, yticklabels=labels,
                 annot_kws={"size": 10, "fontweight": "semibold"})
-    plt.title(f"Matriz de Transición de Markov (Umbrales Fijos) - {fuel}\n$P(S_{{t+1}} = j \\mid S_t = i)$", 
+    plt.title(f"Matriz de Transición de Markov (Umbrales Fijos) - {fuel}\n$P(S_{{t+1}} = i \\mid S_t = j)$", 
               fontsize=11, fontweight='bold', pad=15)
-    plt.ylabel("Estado de Origen ($S_t = i$)", fontsize=10)
-    plt.xlabel("Estado de Destino ($S_{t+1} = j$)", fontsize=10)
+    plt.ylabel("Estado de Destino ($S_{t+1} = s_i$)", fontsize=10)
+    plt.xlabel("Estado de Origen ($S_t = s_j$)", fontsize=10)
     plt.xticks(rotation=45, ha='right')
     plt.yticks(rotation=0)
     plt.tight_layout()
