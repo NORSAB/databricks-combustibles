@@ -72,7 +72,7 @@ def run_grid_search(fuel_name, series):
     
     # Rango de W: 2 (para TCRA/ETCRA) y luego de 10 a 60 (para TCRAM/ETCRAM)
     w_range = [2] + list(range(10, 61))
-    lambda_range = np.round(np.arange(0.70, 1.01, 0.01), 2)
+    lambda_range = np.round(np.arange(0.50, 1.01, 0.01), 2)
     
     results = []
     
