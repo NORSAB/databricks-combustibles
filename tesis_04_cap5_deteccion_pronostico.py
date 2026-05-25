@@ -87,7 +87,7 @@ def evaluate_hyperparams(fuel_name, prices_series, w, l, k):
 
     # K-Means
     valid_alphas = alphas[w:]
-    kmeans = KMeans(n_clusters=k, random_state=SEED, n_init=10)
+    kmeans = KMeans(n_clusters=k, random_state=SEED, n_init=1)
     states_valid = kmeans.fit_predict(valid_alphas.reshape(-1, 1))
     centroids = np.sort(kmeans.cluster_centers_.flatten())
     
@@ -164,9 +164,9 @@ def evaluate_hyperparams(fuel_name, prices_series, w, l, k):
 df_silver = spark.table(f"{CATALOG}.silver.silver_precios_semanales").orderBy("Fecha").toPandas()
 
 # Espacio de búsqueda
-w_range = [2] + list(range(10, 53, 5))
-lambda_range = [0.90, 0.95, 0.97, 0.98, 0.99, 1.00]
-k_range = [2, 3, 4, 5]
+w_range = list(range(2, 53))
+lambda_range = [0.70, 0.80, 0.85, 0.90, 0.95, 0.97, 0.98, 0.99, 1.00]
+k_range = list(range(2, 10))
 
 resultados = []
 combustibles = ['Super', 'Regular', 'Diesel', 'Kerosene']
@@ -204,34 +204,16 @@ for fuel in combustibles:
     if fuel not in df_silver.columns:
         continue
         
-    opt_key = 'Superior' if fuel == 'Super' else fuel
-    opt_w = THESIS_OPTIMALS[opt_key]['W']
-    opt_l = THESIS_OPTIMALS[opt_key]['lambda']
-    opt_k = THESIS_OPTIMALS[opt_key]['K']
-    
-    # Intentar buscar la combinación exacta en los resultados de la grilla
-    match = df_resultados[
-        (df_resultados['Combustible'] == fuel) & 
-        (df_resultados['W'] == opt_w) & 
-        (df_resultados['Lambda'] == opt_l) & 
-        (df_resultados['k'] == opt_k)
-    ]
-    if not match.empty:
-        best_records.append(match.iloc[0].to_dict())
-    else:
-        # Fallback si no se evaluó en la grilla local representativa
-        best_records.append({
-            'Combustible': fuel,
-            'W': opt_w,
-            'Lambda': opt_l,
-            'k': opt_k,
-            'AIC': THESIS_OPTIMALS[opt_key]['aic_th'],
-            'Exactitud': THESIS_OPTIMALS[opt_key]['acc_th'] / 100.0,
-            'RMSE': THESIS_OPTIMALS[opt_key]['rmse_th']
-        })
+    df_fuel = df_resultados[df_resultados['Combustible'] == fuel]
+    df_sorted = df_fuel.sort_values(
+        by=['RMSE', 'Exactitud', 'AIC'],
+        ascending=[True, False, True]
+    )
+    best_row = df_sorted.iloc[0]
+    best_records.append(best_row.to_dict())
 
 df_best = pd.DataFrame(best_records)
-print("\n--- MEJORES HIPERPARÁMETROS SELECCIONADOS (COHERENCIA TESIS) ---")
+print("\n--- MEJORES HIPERPARÁMETROS SELECCIONADOS (3 JUECES DINÁMICOS) ---")
 display(df_best)
 
 # COMMAND ----------
@@ -393,11 +375,12 @@ try:
 
         # Reconstruir la matriz de transición desde Cap 4 (columna-estocástica)
         P = np.zeros((k_fuel, k_fuel))
-        for _, r in df_matrices_p[df_matrices_p['Combustible'] == fuel].iterrows():
+        df_fuel_mat = df_matrices_p[(df_matrices_p['Combustible'] == fuel) & (df_matrices_p['Metodo'] == 'K-Means')]
+        for _, r in df_fuel_mat.iterrows():
             o, d = int(r['Estado_Origen']), int(r['Estado_Destino'])
             if o < k_fuel and d < k_fuel:
                 # Fila d (destino), Columna o (origen)
-                P[d, o] = r['Probabilidad']
+                P[d, o] = r['Probabilidad_NNLS']
 
         # Predecir estado maximizando la columna del estado actual
         next_s = np.argmax(P[:, last_state]) if last_state < k_fuel else 0
