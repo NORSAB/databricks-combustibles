@@ -11,13 +11,13 @@
 # MAGIC    * **ETCRAM:** Ventana móvil $W \ge 10$, con decaimiento ($\lambda < 1.0$)
 # MAGIC 2. Evaluar el desempeño continuo (MAPE y RMSE) de la predicción un-paso-adelante para cada combustible en 8 particiones temporales (CV).
 # MAGIC 3. Seleccionar los parámetros óptimos por combustible para cada una de las 4 variantes usando el protocolo de promedio de hiperparámetros óptimos por partición, y elegir la mejor global.
-# MAGIC 4. Guardar los alphas óptimos calculados para cada variante (y el ganador absoluto) y el rendimiento en tablas Gold.
+# MAGIC 4. Guardar los alphas óptimos calculados para cada variante (y el ganador absoluto) y el rendimiento en tablas Research.
 # MAGIC
-# MAGIC **Salidas Gold:**
-# MAGIC - `combustibles_hn.gold.tesis_cap2_grid_performance`: MAPE y RMSE de todas las combinaciones y variantes evaluadas (todas las ejecuciones de la grilla).
-# MAGIC - `combustibles_hn.gold.tesis_cap2_best_hyperparams`: Parámetros óptimos para cada una de las 4 variantes.
-# MAGIC - `combustibles_hn.gold.tesis_alphas_combustibles_optimos`: Precios y alphas óptimos calculados para cada una de las 4 variantes de la familia TCRA.
-# MAGIC
+# MAGIC **Salidas Research Schema:**
+# MAGIC - `combustibles_hn.research.cap2_grid_performance`: MAPE y RMSE de todas las combinaciones y variantes evaluadas (todas las ejecuciones de la grilla).
+# MAGIC - `combustibles_hn.research.cap2_best_hyperparams`: Parámetros óptimos para cada una de las 4 variantes.
+# MAGIC - `combustibles_hn.research.series_alphas_completo`: Precios y alphas óptimos calculados para cada una de las 4 variantes de la familia TCRA.
+# MAGIC - `combustibles_hn.gold.tesis_alphas_combustibles`: Tabla DEPRECATED (usar research.series_alphas_completo).
 
 # COMMAND ----------
 
@@ -34,6 +34,7 @@ SEED = 42
 np.random.seed(SEED)
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 1. Lectura de Datos Silver (Histórico + Scraping)
 
@@ -44,6 +45,7 @@ df_silver = spark.table(f"{CATALOG}.silver.silver_precios_semanales").orderBy("F
 print(f"Datos cargados: {len(df_silver)} semanas.")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 2. Funciones de Optimización y Cálculo de Variantes
 
@@ -189,19 +191,30 @@ def select_optimal_params(df_results, fuel_name):
     return df_opt
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 3. Procesamiento del Grid Search
 
 # COMMAND ----------
 
-# Limpieza explícita de tablas Gold de salida antes de iniciar el procesamiento
-print("Limpiando tablas Gold preexistentes antes de iniciar la búsqueda en rejilla...")
-for table_name in ['tesis_cap2_grid_performance', 'tesis_cap2_best_hyperparams', 'tesis_alphas_combustibles_optimos', 'tesis_alphas_combustibles']:
+# Limpieza explícita de tablas antes de iniciar el procesamiento
+print("Limpiando tablas preexistentes antes de iniciar la búsqueda en rejilla...")
+
+# Tablas que van a research schema
+research_tables = ['cap2_grid_performance', 'cap2_best_hyperparams', 'series_alphas_completo']
+for table_name in research_tables:
     try:
-        spark.sql(f"DROP TABLE IF EXISTS {CATALOG}.gold.{table_name}")
-        print(f"  * Tabla {table_name} eliminada exitosamente.")
+        spark.sql(f"DROP TABLE IF EXISTS {CATALOG}.research.{table_name}")
+        print(f"  * Tabla research.{table_name} eliminada exitosamente.")
     except Exception as e:
-        print(f"  * Advertencia al intentar limpiar {table_name}: {e}")
+        print(f"  * Advertencia al intentar limpiar research.{table_name}: {e}")
+
+# Tabla legacy que permanece en gold
+try:
+    spark.sql(f"DROP TABLE IF EXISTS {CATALOG}.gold.tesis_alphas_combustibles")
+    print(f"  * Tabla gold.tesis_alphas_combustibles eliminada exitosamente.")
+except Exception as e:
+    print(f"  * Advertencia al intentar limpiar gold.tesis_alphas_combustibles: {e}")
 
 combustibles = ['Super', 'Regular', 'Diesel', 'Kerosene']
 all_grid_results = []
@@ -229,6 +242,7 @@ df_grid_all = pd.DataFrame(all_grid_results)
 df_summary = pd.concat(summary_best_dfs, ignore_index=True)
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 4. Generación de Alphas Óptimos de las Variantes
 
@@ -261,34 +275,36 @@ for fuel in combustibles:
             print(f"Alphas optimizados calculados para {fuel} (ETCRAM: W={w_opt}, Lambda={lambda_opt:.2f})")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 5. Almacenamiento en Capa Gold
 
 # COMMAND ----------
 
-# 5a. Guardar todas las combinaciones del Grid Search (todas las ejecuciones)
+# 5a. Guardar todas las combinaciones del Grid Search (research schema)
 spark.createDataFrame(df_grid_all).write \
     .mode("overwrite") \
     .option("overwriteSchema", "true") \
-    .saveAsTable(f"{CATALOG}.gold.tesis_cap2_grid_performance")
-print("✅ Tabla guardada: gold.tesis_cap2_grid_performance")
+    .saveAsTable(f"{CATALOG}.research.cap2_grid_performance")
+print("✅ Tabla guardada: research.cap2_grid_performance")
 
-# 5b. Guardar el resumen de mejores hiperparámetros
+# 5b. Guardar el resumen de mejores hiperparámetros (research schema)
 spark.createDataFrame(df_summary).write \
     .mode("overwrite") \
     .option("overwriteSchema", "true") \
-    .saveAsTable(f"{CATALOG}.gold.tesis_cap2_best_hyperparams")
-print("✅ Tabla guardada: gold.tesis_cap2_best_hyperparams")
+    .saveAsTable(f"{CATALOG}.research.cap2_best_hyperparams")
+print("✅ Tabla guardada: research.cap2_best_hyperparams")
 
-# 5c. Guardar la nueva tabla de alphas calculada con los hiperparámetros de las variantes
+# 5c. Guardar alphas optimizados con nombre actualizado (research schema)
 spark.createDataFrame(df_alphas_optimos).write \
     .mode("overwrite") \
     .option("overwriteSchema", "true") \
-    .saveAsTable(f"{CATALOG}.gold.tesis_alphas_combustibles_optimos")
-print("✅ Tabla guardada: gold.tesis_alphas_combustibles_optimos")
+    .saveAsTable(f"{CATALOG}.research.series_alphas_completo")
+print("✅ Tabla guardada: research.series_alphas_completo")
 
+# 5d. Mantener tabla legacy en gold (DEPRECATED - usar research.series_alphas_completo)
 spark.createDataFrame(df_alphas_optimos).write \
     .mode("overwrite") \
     .option("overwriteSchema", "true") \
     .saveAsTable(f"{CATALOG}.gold.tesis_alphas_combustibles")
-print("✅ Tabla guardada: gold.tesis_alphas_combustibles")
+print("✅ Tabla guardada: gold.tesis_alphas_combustibles (DEPRECATED)")

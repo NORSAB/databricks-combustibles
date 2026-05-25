@@ -1,17 +1,21 @@
 # Databricks notebook source
+# /// script
+# [tool.databricks.environment]
+# environment_version = "2"
+# ///
 # MAGIC %md
 # MAGIC # Tesis Cap 4 — Modelo Híbrido TCRA-Markov con Estimación NNLS, Grid Search de 3 Jueces y K-Means
 # MAGIC
 # MAGIC **Proyecto:** Combustibles en Honduras + Modelos de Tesis
 # MAGIC **Objetivo:**
 # MAGIC 1. Optimizar los hiperparámetros estocásticos $(W, \lambda, K)$ mediante una búsqueda en rejilla (Grid Search) utilizando el criterio jerárquico de los **3 Jueces Jerárquicos** (RMSE de precios, Exactitud de régimen y AIC de Markov).
-2. **Discretizar alphas por K-Means** (centroides ordenados de menor a mayor) para definir los estados de forma endógena a partir de la distribución de cada combustible.
-3. **Estimar las matrices de transición de Markov con NNLS (SRep)** bajo restricciones de no negatividad ($P_{ij} \ge 0$) y suma de columnas unitaria ($\sum_{i=1}^K P_{ij} = 1$).
-4. **Calcular propiedades espectrales** (brecha espectral $\gamma$, tiempo de mezcla $t_{\text{mix}}$ y distribución estacionaria $\boldsymbol{\pi}$).
-5. **Evaluar el rendimiento predictivo** del modelo híbrido, incluyendo predicciones semanales de precios con RMSE y exactitud (accuracy) predictiva en validación cruzada ($P$ vs $Ap$ para la Tabla 4.3).
-6. **Realizar un análisis comparativo** de K-Means frente a la discretización por **Cuantiles Fijos** y frente a los **Umbrales Fijos del Capítulo 3**.
-7. **Generar y exportar la gráfica de análisis de sensibilidad** (RMSE y Exactitud vs. Ventana $W$) consolidada en un gráfico multi-panel.
-8. **Exportar gráficos de evolución temporal de mezcla** para comprobar la convergencia de la cadena de Markov.
+# MAGIC 2. **Discretizar alphas por K-Means** (centroides ordenados de menor a mayor) para definir los estados de forma endógena a partir de la distribución de cada combustible.
+# MAGIC 3. **Estimar las matrices de transición de Markov con NNLS (SRep)** bajo restricciones de no negatividad ($P_{ij} \ge 0$) y suma de columnas unitaria ($\sum_{i=1}^K P_{ij} = 1$).
+# MAGIC 4. **Calcular propiedades espectrales** (brecha espectral $\gamma$, tiempo de mezcla $t_{\text{mix}}$ y distribución estacionaria $\boldsymbol{\pi}$).
+# MAGIC 5. **Evaluar el rendimiento predictivo** del modelo híbrido, incluyendo predicciones semanales de precios con RMSE y exactitud (accuracy) predictiva en validación cruzada ($P$ vs $Ap$ para la Tabla 4.3).
+# MAGIC 6. **Realizar un análisis comparativo** de K-Means frente a la discretización por **Cuantiles Fijos** y frente a los **Umbrales Fijos del Capítulo 3**.
+# MAGIC 7. **Generar y exportar la gráfica de análisis de sensibilidad** (RMSE y Exactitud vs. Ventana $W$) consolidada en un gráfico multi-panel.
+# MAGIC 8. **Exportar gráficos de evolución temporal de mezcla** para comprobar la convergencia de la cadena de Markov.
 # MAGIC
 # MAGIC **Salidas Gold:**
 # MAGIC - `combustibles_hn.gold.tesis_cap4_best_hyperparams`: Hiperparámetros óptimos seleccionados por el protocolo de 3 jueces.
@@ -76,6 +80,7 @@ THESIS_OPTIMALS = {
 }
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 1. Lectura de Precios Silver
 # MAGIC
@@ -92,6 +97,7 @@ if 'Fecha' in df_prices.columns:
 print(f"Total registros de precios cargados: {len(df_prices)}")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 2. Funciones Helper de Estimación y Optimización
 # MAGIC
@@ -161,6 +167,7 @@ def predict_next_state_nnls(P_matrix, current_state_vector):
     return x, residual
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 3. Ejecución del Grid Search de los 3 Jueces Jerárquicos
 # MAGIC
@@ -283,6 +290,11 @@ for fuel in combustibles:
     print(f"Óptimos seleccionados dinámicamente para {fuel}: W={W_opt}, Lambda={lambda_opt:.2f}, K={K_opt} (RMSE={rmse_opt:.4f}, Accuracy={acc_opt:.2f}%, AIC={aic_opt:.2f})")
 
 # COMMAND ----------
+
+display(df_thesis_optimals)
+
+# COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 4. Discretización de K-Means, Estimación NNLS y Propiedades Espectrales
 # MAGIC
@@ -401,6 +413,35 @@ for fuel in combustibles:
             })
 
 # COMMAND ----------
+
+for fuel in combustibles:
+    bp = best_params_by_fuel[fuel]
+    W_opt = bp['W_opt']
+    K_opt = bp['K_opt']
+    alphas = df_prices[f'{fuel}_Alpha_Opt']
+    states = df_prices[f'{fuel}_State']
+    n = len(alphas)
+    centroids = np.sort([c['Centroide_Alpha'] for c in results_centroids_opt if c['Combustible'] == fuel])
+    colors_k = [NORD_PALETTE['aurora_red'], NORD_PALETTE['aurora_orange'], NORD_PALETTE['aurora_yellow'], NORD_PALETTE['frost_blue'], NORD_PALETTE['aurora_green'], NORD_PALETTE['aurora_purple'], NORD_PALETTE['frost_teal'], NORD_PALETTE['gray_text']]
+    
+    fig, ax = plt.subplots(figsize=(12, 6))  # Tamaño uniforme para todos
+    for k in range(K_opt):
+        idxs = np.where(states == k)[0]
+        ax.scatter(idxs, alphas.iloc[idxs], color=colors_k[k % len(colors_k)], s=18, label=f'Regimen {k+1}', alpha=0.7)
+    for c_idx, c_val in enumerate(centroids):
+        ax.axhline(y=c_val, color=colors_k[c_idx % len(colors_k)], linestyle='--', linewidth=2, alpha=0.8, label=f'Centroide {c_idx+1}')
+    ax.set_title(f"K-Means de Alphas — {fuel}", fontsize=13, fontweight='bold', pad=18)
+    ax.set_xlabel("Tiempo (Semana)", fontsize=10)
+    ax.set_ylabel("Alpha", fontsize=10)
+    ax.grid(True, linestyle=':', alpha=0.4)
+    # Leyenda a la derecha, centrada verticalmente
+    ax.legend(loc='center left', bbox_to_anchor=(1.02, 0.5), fontsize=9, frameon=False)
+    plt.tight_layout()
+    display(fig)
+    plt.close(fig)
+
+# COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 5. Simulación de Evolución de Mezcla (Gráfico)
 # MAGIC
@@ -449,6 +490,7 @@ for fuel in combustibles:
     print(f"Evolución de mezcla guardada: {chart_ev_path}")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 6. Análisis Comparativo: K-Means vs Cuantiles vs Umbrales Fijos
 # MAGIC
@@ -549,6 +591,7 @@ for fuel in combustibles:
     })
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 7. Generación de Gráfico de Análisis de Sensibilidad (Multi-panel)
 # MAGIC
@@ -619,6 +662,7 @@ plt.close()
 print(f"Gráfico consolidado de sensibilidad guardado en: {sensitivity_chart_path}")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 8. Guardado de Resultados en Capa Gold
 # MAGIC
@@ -687,3 +731,8 @@ spark.createDataFrame(pd.DataFrame(results_centroids_opt)).write \
     .option("overwriteSchema", "true") \
     .saveAsTable(f"{CATALOG}.gold.tesis_cap4_centroides")
 print("✅ gold.tesis_cap4_centroides")
+
+# COMMAND ----------
+
+df_thesis_optimals = pd.DataFrame(best_params_results)
+display(df_thesis_optimals)
