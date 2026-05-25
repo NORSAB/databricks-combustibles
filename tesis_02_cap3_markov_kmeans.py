@@ -144,20 +144,33 @@ for idx, limit in enumerate(sorted(THRESHOLDS)):
         'Descripcion': f"Umbral de división entre estados"
     })
 
+# Mostrar metadatos de variantes óptimas del Capítulo 2 para documentar
+try:
+    df_best_meta = spark.table(f"{CATALOG}.gold.tesis_cap2_best_hyperparams").toPandas()
+    print("Metadatos de variantes óptimas del Capítulo 2 cargados:")
+    for _, r in df_best_meta[df_best_meta['Es_Mejor_Global'] == True].iterrows():
+        print(f"  * {r['Combustible']}: Variante = {r['Variante']} (W = {int(r['W_opt'])}, Lambda = {r['Lambda_opt']:.2f})")
+except Exception as e:
+    print(f"Advertencia al cargar metadatos del Capítulo 2: {e}")
+
 combustibles = ['Super', 'Regular', 'Diesel', 'Kerosene']
 
 for fuel in combustibles:
-    col_alpha = f'{fuel}_Alpha'
+    col_alpha = f'{fuel}_Alpha_Best'  # Cargar la mejor variante identificada en el Capítulo 2
     if col_alpha not in df_alphas.columns:
-        print(f"ADVERTENCIA: {col_alpha} no encontrada, saltando {fuel}.")
-        continue
+        col_alpha = f'{fuel}_Alpha'   # Fallback por compatibilidad
+        if col_alpha not in df_alphas.columns:
+            print(f"ADVERTENCIA: No se encontró columna de alphas para {fuel}, saltando.")
+            continue
 
+    print(f"\nProcesando {fuel} usando columna óptima: {col_alpha}")
     alphas = np.array(df_alphas[col_alpha].fillna(0).values, dtype=float)
 
     # === A. Asignación de Estados con Umbrales Fijos ===
     states, sorted_th = get_markov_states_fixed(alphas, THRESHOLDS)
     df_alphas[f'{fuel}_State'] = states
-    print(f"\n=== {fuel} Umbrales Fijos: {K_ESTADOS} estados ===")
+    df_alphas[f'{fuel}_State_Fixed'] = states
+    print(f"=== {fuel} Umbrales Fijos: {K_ESTADOS} estados ===")
     
     # Calcular medias empíricas de cada estado (representantes o 'centroides' para compatibilidad)
     centroids = []
