@@ -56,7 +56,9 @@ except Exception as e:
 # COMMAND ----------
 
 def predict_next_state_nnls(P_matrix, current_state_vector):
-    A = P_matrix.T
+    # Dado que P es estocástica por columnas, resolvemos min ||P*x - b||_2^2
+    # donde b es el vector de estado actual y x es el vector de probabilidades de transición.
+    A = P_matrix
     b = current_state_vector
     x, residual = nnls(A, b)
     if np.sum(x) > 0:
@@ -111,11 +113,12 @@ def SRep(datos, ss):
 
 def compute_Ap(P):
     """Calcula Ap via simulación + SRep."""
-    p0 = zeros((K, 100))
+    k_local = len(P)
+    p0 = zeros((k_local, 100))
     p0[0, 0] = 1
     for j in range(99):
         p0[:, j + 1] = P @ p0[:, j]
-    return SRep(p0, ss=K)
+    return SRep(p0, ss=99)
 
 # COMMAND ----------
 # MAGIC %md
@@ -134,12 +137,13 @@ for fuel in combustibles:
     k_optimo = len(df_fuel_centroides)
     centroids = df_fuel_centroides['Centroide_Alpha'].values
 
+    # Matriz P es estocástica por columnas: fila = destino, columna = origen
     P = np.zeros((k_optimo, k_optimo))
     df_fuel = df_matrices[df_matrices['Combustible'] == fuel]
     for _, row in df_fuel.iterrows():
         o, d = int(row['Estado_Origen']), int(row['Estado_Destino'])
         if o < k_optimo and d < k_optimo:
-            P[o, d] = row['Probabilidad']
+            P[d, o] = row['Probabilidad']
 
     # NNLS desde cada estado inicial
     for s in range(k_optimo):
@@ -163,7 +167,8 @@ for fuel in combustibles:
         actual_prices, predicted_prices = [], []
         for t in range(len(states) - 1):
             current_s = int(states[t])
-            next_s = np.argmax(P[current_s, :])
+            # La predicción clásica busca el máximo de la columna actual de P
+            next_s = np.argmax(P[:, current_s])
             pred_alpha = centroids[next_s] if next_s < len(centroids) else 0
             pred_price = prices[t] * (1 + pred_alpha)
             actual_prices.append(prices[t + 1])
@@ -192,7 +197,7 @@ for fuel in combustibles:
 # COMMAND ----------
 
 print("\n--- Tabla 4.3: Rendimiento predictivo con umbrales fijos ---")
-print(f"Parámetros: W={W_CAP4}, lambda={LAMBDA_CAP4}, K={K}, umbrales={THRESHOLDS}")
+print(f"Parámetros: W={W_CAP4}, lambda={LAMBDA_CAP4}, umbrales={THRESHOLDS}")
 
 tabla_4_3 = []
 detalle_particiones = []
@@ -206,18 +211,30 @@ for fuel in combustibles:
     alphas = calcular_alphas_cap4(series, W_CAP4, LAMBDA_CAP4)
     states_full = [asignar_estado_fijo(a) for a in alphas]
 
+    # Reducción de estados dinámica:
+    # Si el estado 3 (s4, "alza fuerte") no aparece en toda la serie, K_eff = 3.
+    # De lo contrario K_eff = 4.
+    K_eff = 3 if (3 not in states_full) else 4
+    print(f"Combustible {fuel}: K_eff = {K_eff}")
+
     # Matrices completas (100%)
-    X0 = np.zeros((K, len(states_full) - 1))
-    X1 = np.zeros((K, len(states_full) - 1))
+    X0 = np.zeros((K_eff, len(states_full) - 1))
+    X1 = np.zeros((K_eff, len(states_full) - 1))
     for t in range(len(states_full) - 1):
-        X0[states_full[t], t] = 1
-        X1[states_full[t + 1], t] = 1
+        s_orig = states_full[t]
+        s_dest = states_full[t + 1]
+        # Asegurar que los estados estén dentro del rango K_eff
+        if s_orig >= K_eff: s_orig = K_eff - 1
+        if s_dest >= K_eff: s_dest = K_eff - 1
+        X0[s_orig, t] = 1
+        X1[s_dest, t] = 1
     C_full = X1 @ X0.T
     P_full = estimate_P_from_C(C_full)
 
     try:
         Ap_full = compute_Ap(P_full)
-    except:
+    except Exception as e:
+        print(f"Error compute_Ap full para {fuel}: {e}")
         Ap_full = P_full
 
     accs_P, accs_Ap = [], []
@@ -229,16 +246,20 @@ for fuel in combustibles:
             continue
 
         # Matrices de entrenamiento
-        X0t = np.zeros((K, len(states_train) - 1))
-        X1t = np.zeros((K, len(states_train) - 1))
+        X0t = np.zeros((K_eff, len(states_train) - 1))
+        X1t = np.zeros((K_eff, len(states_train) - 1))
         for t in range(len(states_train) - 1):
-            X0t[states_train[t], t] = 1
-            X1t[states_train[t + 1], t] = 1
+            s_orig = states_train[t]
+            s_dest = states_train[t + 1]
+            if s_orig >= K_eff: s_orig = K_eff - 1
+            if s_dest >= K_eff: s_dest = K_eff - 1
+            X0t[s_orig, t] = 1
+            X1t[s_dest, t] = 1
         C_train = X1t @ X0t.T
         P_train = estimate_P_from_C(C_train)
         try:
             Ap_train = compute_Ap(P_train)
-        except:
+        except Exception as e:
             Ap_train = P_train
 
         # Accuracy con P̂ y con Ap
@@ -246,6 +267,8 @@ for fuel in combustibles:
         for i in range(len(states_test) - 1):
             current_idx = states_test[i]
             actual_next = states_test[i + 1]
+            if current_idx >= K_eff: current_idx = K_eff - 1
+            if actual_next >= K_eff: actual_next = K_eff - 1
 
             pred_P = np.argmax(P_train[:, current_idx])
             pred_Ap = np.argmax(Ap_train[:, current_idx])
