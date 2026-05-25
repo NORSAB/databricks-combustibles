@@ -187,7 +187,7 @@ for fuel in combustibles:
         print(f"Advertencia: No se encontró columna {fuel}, saltando.")
         continue
 
-    v = df_prices[fuel].ffill().bfill().values
+    v = df_prices[fuel].ffill().bfill().astype(float).values
     n = len(v)
     
     print(f"\nProcesando grilla para {fuel}...")
@@ -292,7 +292,7 @@ for fuel in combustibles:
 best_params_by_fuel = {row['Combustible']: row for row in best_params_results}
 
 for fuel in combustibles:
-    v = df_prices[fuel].ffill().bfill().values
+    v = df_prices[fuel].ffill().bfill().astype(float).values
     n = len(v)
     
     bp = best_params_by_fuel[fuel]
@@ -456,7 +456,7 @@ for fuel in combustibles:
 # COMMAND ----------
 
 for fuel in combustibles:
-    v = df_prices[fuel].ffill().bfill().values
+    v = df_prices[fuel].ffill().bfill().astype(float).values
     n = len(v)
     
     bp = best_params_by_fuel[fuel]
