@@ -308,3 +308,89 @@ spark.createDataFrame(df_alphas_optimos).write \
     .option("overwriteSchema", "true") \
     .saveAsTable(f"{CATALOG}.gold.tesis_alphas_combustibles")
 print("✅ Tabla guardada: gold.tesis_alphas_combustibles (DEPRECATED)")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 6. Aplicar Unity Catalog Tags para Clasificación
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC -- ====================================================================
+# MAGIC -- UNITY CATALOG TAGS: Clasificación de Assets por Schema y Propósito
+# MAGIC -- ====================================================================
+# MAGIC
+# MAGIC -- Tags de Research Schema: Investigación Académica (Cap 2, 3, 4)
+# MAGIC ALTER TABLE combustibles_hn.research.cap2_grid_performance SET TAGS ('classification' = 'research', 'chapter' = 'cap2', 'type' = 'performance_metrics');
+# MAGIC ALTER TABLE combustibles_hn.research.cap2_best_hyperparams SET TAGS ('classification' = 'research', 'chapter' = 'cap2', 'type' = 'optimal_params');
+# MAGIC ALTER TABLE combustibles_hn.research.series_alphas_completo SET TAGS ('classification' = 'research', 'chapter' = 'cap2', 'type' = 'time_series', 'master' = 'true');
+# MAGIC ALTER TABLE combustibles_hn.research.series_alphas_con_estados SET TAGS ('classification' = 'research', 'chapter' = 'cap3_cap4', 'type' = 'time_series_states');
+# MAGIC
+# MAGIC ALTER TABLE combustibles_hn.research.cap3_umbrales SET TAGS ('classification' = 'research', 'chapter' = 'cap3', 'type' = 'thresholds');
+# MAGIC ALTER TABLE combustibles_hn.research.cap3_centroides SET TAGS ('classification' = 'research', 'chapter' = 'cap3', 'type' = 'centroids');
+# MAGIC ALTER TABLE combustibles_hn.research.cap3_matrices_transicion SET TAGS ('classification' = 'research', 'chapter' = 'cap3', 'type' = 'markov_matrix');
+# MAGIC ALTER TABLE combustibles_hn.research.cap3_propiedades_espectrales SET TAGS ('classification' = 'research', 'chapter' = 'cap3', 'type' = 'spectral_properties');
+# MAGIC
+# MAGIC ALTER TABLE combustibles_hn.research.cap4_best_hyperparams SET TAGS ('classification' = 'research', 'chapter' = 'cap4', 'type' = 'optimal_params');
+# MAGIC ALTER TABLE combustibles_hn.research.cap4_centroides SET TAGS ('classification' = 'research', 'chapter' = 'cap4', 'type' = 'centroids');
+# MAGIC ALTER TABLE combustibles_hn.research.cap4_detalle_grid SET TAGS ('classification' = 'research', 'chapter' = 'cap4', 'type' = 'grid_search');
+# MAGIC ALTER TABLE combustibles_hn.research.cap4_detalle_particiones SET TAGS ('classification' = 'research', 'chapter' = 'cap4', 'type' = 'partitions');
+# MAGIC ALTER TABLE combustibles_hn.research.cap4_matrices_transicion SET TAGS ('classification' = 'research', 'chapter' = 'cap4', 'type' = 'markov_matrix');
+# MAGIC ALTER TABLE combustibles_hn.research.cap4_predicciones_nnls SET TAGS ('classification' = 'research', 'chapter' = 'cap4', 'type' = 'predictions_probs');
+# MAGIC ALTER TABLE combustibles_hn.research.cap4_predicciones_precio_semanal SET TAGS ('classification' = 'research', 'chapter' = 'cap4', 'type' = 'predictions_weekly');
+# MAGIC ALTER TABLE combustibles_hn.research.cap4_propiedades_espectrales SET TAGS ('classification' = 'research', 'chapter' = 'cap4', 'type' = 'spectral_properties');
+# MAGIC ALTER TABLE combustibles_hn.research.cap4_rmse_markov_base SET TAGS ('classification' = 'research', 'chapter' = 'cap4', 'type' = 'rmse_metrics');
+# MAGIC ALTER TABLE combustibles_hn.research.cap4_tabla_comparativa SET TAGS ('classification' = 'research', 'chapter' = 'cap4', 'type' = 'comparative_results');
+# MAGIC ALTER TABLE combustibles_hn.research.cap4_resultados_publicados SET TAGS ('classification' = 'research', 'chapter' = 'cap4', 'type' = 'published_results');
+# MAGIC
+# MAGIC ALTER VIEW combustibles_hn.research.v_series_master SET TAGS ('classification' = 'research', 'type' = 'master_view', 'refresh' = 'materialized');
+# MAGIC
+# MAGIC -- Tags de Gold Schema: Datos Dimensionales de Producción
+# MAGIC ALTER TABLE combustibles_hn.gold.gold_calendario SET TAGS ('classification' = 'production', 'type' = 'dimension', 'grain' = 'weekly');
+# MAGIC ALTER TABLE combustibles_hn.gold.gold_fact_precios SET TAGS ('classification' = 'production', 'type' = 'fact', 'grain' = 'weekly');
+# MAGIC ALTER TABLE combustibles_hn.gold.gold_super SET TAGS ('classification' = 'production', 'type' = 'fact', 'fuel' = 'super');
+# MAGIC ALTER TABLE combustibles_hn.gold.gold_regular SET TAGS ('classification' = 'production', 'type' = 'fact', 'fuel' = 'regular');
+# MAGIC ALTER TABLE combustibles_hn.gold.gold_diesel SET TAGS ('classification' = 'production', 'type' = 'fact', 'fuel' = 'diesel');
+# MAGIC ALTER TABLE combustibles_hn.gold.gold_kerosene SET TAGS ('classification' = 'production', 'type' = 'fact', 'fuel' = 'kerosene');
+# MAGIC ALTER TABLE combustibles_hn.gold.gold_tendencias SET TAGS ('classification' = 'production', 'type' = 'fact', 'aggregation' = 'monthly');
+# MAGIC ALTER TABLE combustibles_hn.gold.dim_combustible SET TAGS ('classification' = 'production', 'type' = 'dimension', 'master' = 'true');
+# MAGIC
+# MAGIC ALTER VIEW combustibles_hn.gold.v_precios_completo SET TAGS ('classification' = 'production', 'type' = 'view', 'legacy' = 'true');
+# MAGIC
+# MAGIC -- Tabla DEPRECATED en Gold
+# MAGIC ALTER TABLE combustibles_hn.gold.tesis_alphas_combustibles SET TAGS ('classification' = 'deprecated', 'reason' = 'usar research.series_alphas_completo', 'removal_date' = '2026-07-01');
+# MAGIC
+# MAGIC -- Tags de Analytics Schema: Vistas Analíticas y Métricas
+# MAGIC ALTER VIEW combustibles_hn.analytics.v_estadisticas_descriptivas_alphas SET TAGS ('classification' = 'analytics', 'type' = 'descriptive_stats', 'refresh' = 'materialized');
+# MAGIC ALTER VIEW combustibles_hn.analytics.v_matriz_correlacion_alphas SET TAGS ('classification' = 'analytics', 'type' = 'correlation_matrix');
+# MAGIC ALTER VIEW combustibles_hn.analytics.v_metricas_resumen_alphas SET TAGS ('classification' = 'analytics', 'type' = 'summary_metrics');
+# MAGIC ALTER VIEW combustibles_hn.analytics.v_analisis_temporal_mensual SET TAGS ('classification' = 'analytics', 'type' = 'temporal_analysis', 'grain' = 'monthly');
+# MAGIC ALTER VIEW combustibles_hn.analytics.v_histograma_super_alpha SET TAGS ('classification' = 'analytics', 'type' = 'histogram', 'fuel' = 'super');
+# MAGIC ALTER VIEW combustibles_hn.analytics.v_histograma_regular_alpha SET TAGS ('classification' = 'analytics', 'type' = 'histogram', 'fuel' = 'regular');
+# MAGIC ALTER VIEW combustibles_hn.analytics.v_histograma_diesel_alpha SET TAGS ('classification' = 'analytics', 'type' = 'histogram', 'fuel' = 'diesel');
+# MAGIC ALTER VIEW combustibles_hn.analytics.v_histograma_kerosene_alpha SET TAGS ('classification' = 'analytics', 'type' = 'histogram', 'fuel' = 'kerosene');
+# MAGIC
+# MAGIC -- Tags de Genie Schema: Assets para Genie Space
+# MAGIC ALTER TABLE combustibles_hn.genie.preguntas_frecuentes SET TAGS ('classification' = 'genie', 'type' = 'qa_pairs', 'audience' = 'business_users');
+# MAGIC ALTER TABLE combustibles_hn.genie.mapeo_migracion SET TAGS ('classification' = 'genie', 'type' = 'migration_mapping', 'purpose' = 'documentation');
+# MAGIC ALTER VIEW combustibles_hn.genie.v_precios_actuales SET TAGS ('classification' = 'genie', 'type' = 'current_prices', 'refresh' = 'materialized');
+# MAGIC ALTER VIEW combustibles_hn.genie.v_eventos_historicos SET TAGS ('classification' = 'genie', 'type' = 'historical_events');
+# MAGIC ALTER VIEW combustibles_hn.genie.v_volatilidad_combustibles SET TAGS ('classification' = 'genie', 'type' = 'volatility_metrics');
+# MAGIC
+# MAGIC SELECT '✅ Unity Catalog Tags aplicados exitosamente a todos los schemas' AS status;
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC -- Verificar tags aplicados
+# MAGIC SELECT 
+# MAGIC   table_catalog,
+# MAGIC   table_schema,
+# MAGIC   table_name,
+# MAGIC   tag_name,
+# MAGIC   tag_value
+# MAGIC FROM system.information_schema.table_tags
+# MAGIC WHERE table_catalog = 'combustibles_hn'
+# MAGIC   AND table_schema IN ('gold', 'research', 'analytics', 'genie')
+# MAGIC ORDER BY table_schema, table_name, tag_name;
