@@ -1,4 +1,8 @@
 # Databricks notebook source
+# /// script
+# [tool.databricks.environment]
+# environment_version = "2"
+# ///
 # MAGIC %md
 # MAGIC # Tesis Cap 6 — Extensión Reservorio SSRC (Modelos No Lineales y Comparación)
 # MAGIC
@@ -80,6 +84,7 @@ THESIS_OPTIMALS_SSRC = {
 }
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 1. Funciones del Reservorio
 # MAGIC
@@ -175,6 +180,7 @@ def evaluate_ssrc(fuel_name, alphas, prices, D, rho, leak_rate, seed, train_size
     return result, predictions, eigs, H_full
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 2. Carga de Datos
 # MAGIC
@@ -192,6 +198,7 @@ except Exception as e:
     dbutils.notebook.exit("Faltan dependencias de la capa Gold")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 3. Grid Search SSRC
 # MAGIC
@@ -262,6 +269,7 @@ print("\n--- MEJORES CONFIGURACIONES SSRC SELECCIONADAS (COHERENCIA TESIS) ---")
 display(df_best_ssrc)
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 4. N=30 Realizaciones del Mejor Modelo
 # MAGIC
@@ -293,6 +301,7 @@ for _, row in df_best_ssrc.iterrows():
         print(f"  {fuel} (N=30): promedio={np.mean(rmses_fuel):.6f} std={np.std(rmses_fuel):.6f}")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 5. Convergencia del Washout
 # MAGIC
@@ -316,6 +325,7 @@ for _, row in df_best_ssrc.iterrows():
             })
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 6. Verificaciones Teóricas (ESP, Rango, Inclusión, Perturbación)
 # MAGIC
@@ -370,6 +380,7 @@ for _, row in df_best_ssrc.iterrows():
     print(f"  {fuel}: ESP={esp_check} | rho actual={actual_rho:.4f} | Rango={rank_Wres}/{D_opt}")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 7. Predicciones Semanales y Comparación Final
 # MAGIC
@@ -394,7 +405,7 @@ for fuel in combustibles:
     for _, r in df_matrices[df_matrices['Combustible'] == fuel].iterrows():
         o, d = int(r['Estado_Origen']), int(r['Estado_Destino'])
         if o < k_optimo and d < k_optimo:
-            P[d, o] = r['Probabilidad']
+            P[d, o] = r['Probabilidad_NNLS']
 
     prices_full = np.array(df_alphas[fuel].fillna(0.0).values, dtype=float)
     alphas_full = np.array(df_alphas[f'{fuel}_Alpha'].fillna(0.0).values, dtype=float)
@@ -456,6 +467,7 @@ print("\n--- COMPARACIÓN FINAL DE LA TESIS (CON TEST DE DIEBOLD-MARIANO) ---")
 display(df_comparacion_final)
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 8. Guardado en Capa Gold
 # MAGIC
@@ -541,3 +553,25 @@ if pca_results:
     print("✅ gold.tesis_cap6_reservorio_pca")
 
 print("\n=== CAPÍTULO 6 COMPLETO ===")
+
+# COMMAND ----------
+
+# 9. Validación final: Cargar y mostrar tablas Gold para revisión
+
+tables_gold = [
+    "tesis_cap6_grid_completo",
+    "tesis_cap6_best_ssrc",
+    "tesis_cap6_predicciones_semanales",
+    "tesis_cap6_comparacion_final",
+    "tesis_cap6_realizaciones",
+    "tesis_cap6_washout_convergencia",
+    "tesis_cap6_verificaciones_teoricas",
+    "tesis_cap6_perturbacion",
+    "tesis_cap6_autovalores",
+    "tesis_cap6_reservorio_pca"
+]
+
+for tbl in tables_gold:
+    df_gold = spark.table(f"{CATALOG}.gold.{tbl}")
+    print(f"\n--- {tbl} ---")
+    display(df_gold.limit(10))

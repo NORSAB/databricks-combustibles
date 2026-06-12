@@ -385,12 +385,12 @@ print("✅ Tabla guardada: gold.tesis_alphas_combustibles (DEPRECATED)")
 # MAGIC %sql
 # MAGIC -- Verificar tags aplicados
 # MAGIC SELECT 
-# MAGIC   table_catalog,
-# MAGIC   table_schema,
+# MAGIC   catalog_name,
+# MAGIC   schema_name,
 # MAGIC   table_name,
 # MAGIC   tag_name,
 # MAGIC   tag_value
 # MAGIC FROM system.information_schema.table_tags
-# MAGIC WHERE table_catalog = 'combustibles_hn'
-# MAGIC   AND table_schema IN ('gold', 'research', 'analytics', 'genie')
-# MAGIC ORDER BY table_schema, table_name, tag_name;
+# MAGIC WHERE catalog_name = 'combustibles_hn'
+# MAGIC   AND schema_name IN ('gold', 'research', 'analytics', 'genie')
+# MAGIC ORDER BY schema_name, table_name, tag_name;

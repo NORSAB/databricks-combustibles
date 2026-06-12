@@ -1,10 +1,19 @@
 # Databricks notebook source
+# /// script
+# [tool.databricks.environment]
+# environment_version = "2"
+# ///
 # MAGIC %md
-# MAGIC # Tesis Dashboards — Vistas Gold Capítulo 2 (Tableau & Power BI)
-# MAGIC 
-# MAGIC **Objetivo:** Persistir las consultas interactivas generadas por Genie para el **Capítulo 2** como Vistas (Views) en la capa Gold.
+# MAGIC # Tesis Dashboards — Vistas Gold Completas (Tableau & Power BI)
+# MAGIC
+# MAGIC **Objetivo:** Persistir las consultas analíticas de todos los capítulos de la tesis como Vistas (Views) en la capa Gold.
 # MAGIC Esto permite que herramientas externas como Power BI o Tableau puedan consumirlas directamente sin necesidad de recalcularlas ni duplicar almacenamiento.
-# MAGIC Todas las vistas usan el prefijo `v_cap2_`.
+# MAGIC
+# MAGIC **Convención de nombres:**
+# MAGIC * `v_cap2_*` - Capítulo 2 (Análisis de Alphas)
+# MAGIC * `v_cap3_*` - Capítulo 3 (Clustering K-Means)
+# MAGIC * `v_cap4_*` - Capítulo 4 (NNLS/Markov Híbrido)
+# MAGIC * `v_cap6_*` - Capítulo 6 (SSRC - State Space Reservoir Computing)
 
 # COMMAND ----------
 
@@ -15,6 +24,7 @@ spark.sql(f"USE CATALOG {CATALOG}")
 print(f"Catálogo {CATALOG} seleccionado.")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 1. Vistas de Histogramas (Capítulo 2)
 
@@ -191,6 +201,7 @@ ORDER BY
 print("Vista creada: v_cap2_histograma_super_alpha")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 2. Matriz de Correlación (Capítulo 2)
 
@@ -306,6 +317,7 @@ SELECT
 print("Vista creada: v_cap2_matriz_correlacion_alphas")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 3. Estadísticas Descriptivas (Capítulo 2)
 
@@ -373,6 +385,7 @@ FROM combustibles_hn.gold.tesis_alphas_combustibles
 print("Vista creada: v_cap2_estadisticas_descriptivas_alphas")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 4. Análisis Temporal y Resumen (Capítulo 2)
 
@@ -417,4 +430,365 @@ FROM
 print("Vista creada: v_cap2_metricas_resumen_alphas")
 
 # COMMAND ----------
-print("¡Todas las Vistas (Views) del Capítulo 2 han sido registradas exitosamente en la capa Gold!")
+
+print("¡Vistas del Capítulo 2 completadas!")
+
+# COMMAND ----------
+
+# DBTITLE 1,Capítulo 3 - Clustering K-Means
+# MAGIC %md
+# MAGIC ## 5. Vistas Capítulo 3 - Clustering K-Means
+
+# COMMAND ----------
+
+# DBTITLE 1,Vista: Centroides K-Means
+spark.sql("""
+CREATE OR REPLACE VIEW combustibles_hn.gold.v_cap3_centroides AS
+SELECT
+  Combustible,
+  Estado,
+  Centroide_Alpha
+FROM
+  combustibles_hn.gold.tesis_cap3_centroides
+ORDER BY
+  Combustible,
+  Estado
+""")
+
+print("Vista creada: v_cap3_centroides")
+
+# COMMAND ----------
+
+# DBTITLE 1,Vista: Propiedades Clusters
+spark.sql("""
+CREATE OR REPLACE VIEW combustibles_hn.gold.v_cap3_propiedades_espectrales AS
+SELECT
+  Combustible,
+  K_Estados,
+  Eigenvalue_Dominante,
+  Eigenvalue_2,
+  Spectral_Gap,
+  Mixing_Time_Approx,
+  Pi_Estacionaria
+FROM
+  combustibles_hn.gold.tesis_cap3_propiedades_espectrales
+ORDER BY
+  Combustible
+""")
+
+print("Vista creada: v_cap3_propiedades_espectrales")
+
+# COMMAND ----------
+
+# DBTITLE 1,Vista: Umbrales Óptimos
+spark.sql("""
+CREATE OR REPLACE VIEW combustibles_hn.gold.v_cap3_umbrales AS
+SELECT
+  Limite_Index,
+  Valor_Limite,
+  Descripcion
+FROM
+  combustibles_hn.gold.tesis_cap3_umbrales
+ORDER BY
+  Limite_Index
+""")
+
+print("Vista creada: v_cap3_umbrales")
+
+# COMMAND ----------
+
+# DBTITLE 1,Vista: Matrices de Transición Cap 3
+spark.sql("""
+CREATE OR REPLACE VIEW combustibles_hn.gold.v_cap3_matrices_transicion AS
+SELECT
+  Combustible,
+  Estado_Origen,
+  Estado_Destino,
+  Probabilidad,
+  Error_Estandar,
+  Limite_Inferior_95,
+  Limite_Superior_95,
+  Conteo_Transiciones,
+  Total_Origen
+FROM
+  combustibles_hn.gold.tesis_cap3_matrices_transicion
+ORDER BY
+  Combustible,
+  Estado_Origen,
+  Estado_Destino
+""")
+
+print("Vista creada: v_cap3_matrices_transicion")
+
+# COMMAND ----------
+
+# DBTITLE 1,Capítulo 4 - NNLS/Markov Híbrido
+# MAGIC %md
+# MAGIC ## 6. Vistas Capítulo 4 - NNLS/Markov Híbrido
+
+# COMMAND ----------
+
+# DBTITLE 1,Vista: Matrices de Transición
+spark.sql("""
+CREATE OR REPLACE VIEW combustibles_hn.gold.v_cap4_matrices_transicion AS
+SELECT
+  Combustible,
+  Metodo,
+  Estado_Origen,
+  Estado_Destino,
+  Probabilidad_MLE,
+  Probabilidad_NNLS,
+  Conteo_Transiciones,
+  Total_Origen
+FROM
+  combustibles_hn.gold.tesis_cap4_matrices_transicion
+ORDER BY
+  Combustible,
+  Metodo,
+  Estado_Origen,
+  Estado_Destino
+""")
+
+print("Vista creada: v_cap4_matrices_transicion")
+
+# COMMAND ----------
+
+# DBTITLE 1,Vista: Hiperparámetros Óptimos
+spark.sql("""
+CREATE OR REPLACE VIEW combustibles_hn.gold.v_cap4_hiperparametros_optimos AS
+SELECT
+  Combustible,
+  K_opt,
+  W_opt,
+  Lambda_opt,
+  RMSE_Opt,
+  Accuracy_Opt,
+  AIC_Opt
+FROM
+  combustibles_hn.gold.tesis_cap4_best_hyperparams
+ORDER BY
+  Combustible
+""")
+
+print("Vista creada: v_cap4_hiperparametros_optimos")
+
+# COMMAND ----------
+
+# DBTITLE 1,Vista: Predicciones Semanales
+spark.sql("""
+CREATE OR REPLACE VIEW combustibles_hn.gold.v_cap4_predicciones AS
+SELECT
+  Combustible,
+  Semana,
+  Precio_Real,
+  Precio_Predicho_Markov,
+  Fecha,
+  Estado_Actual,
+  Estado_Predicho
+FROM
+  combustibles_hn.gold.tesis_cap4_predicciones_precio_semanal
+ORDER BY
+  Combustible,
+  Semana
+""")
+
+print("Vista creada: v_cap4_predicciones")
+
+# COMMAND ----------
+
+# DBTITLE 1,Vista: RMSE Markov
+spark.sql("""
+CREATE OR REPLACE VIEW combustibles_hn.gold.v_cap4_rmse_markov AS
+SELECT
+  Combustible,
+  RMSE_Markov,
+  N_Predicciones
+FROM
+  combustibles_hn.gold.tesis_cap4_rmse_markov_base
+ORDER BY
+  Combustible
+""")
+
+print("Vista creada: v_cap4_rmse_markov")
+
+# COMMAND ----------
+
+# DBTITLE 1,Vista: Comparativa Métodos MLE vs NNLS
+spark.sql("""
+CREATE OR REPLACE VIEW combustibles_hn.gold.v_cap4_comparativa_metodos AS
+SELECT
+  Combustible,
+  'KMeans' AS Metodo,
+  RMSE_KMeans AS RMSE,
+  Accuracy_KMeans AS Accuracy
+FROM
+  combustibles_hn.gold.tesis_cap4_tabla_comparativa
+UNION ALL
+SELECT
+  Combustible,
+  'Cuantiles' AS Metodo,
+  RMSE_Cuantiles AS RMSE,
+  Accuracy_Cuantiles AS Accuracy
+FROM
+  combustibles_hn.gold.tesis_cap4_tabla_comparativa
+UNION ALL
+SELECT
+  Combustible,
+  'UmbralesFijos' AS Metodo,
+  RMSE_UmbralesFijos AS RMSE,
+  Accuracy_UmbralesFijos AS Accuracy
+FROM
+  combustibles_hn.gold.tesis_cap4_tabla_comparativa
+ORDER BY
+  Combustible,
+  Metodo
+""")
+
+print("Vista creada: v_cap4_comparativa_metodos")
+
+# COMMAND ----------
+
+# DBTITLE 1,Vista: Detalle Grid Search
+spark.sql("""
+CREATE OR REPLACE VIEW combustibles_hn.gold.v_cap4_grid_search_detalle AS
+SELECT
+  Combustible,
+  K,
+  W,
+  Lambda,
+  RMSE,
+  Accuracy,
+  AIC
+FROM
+  combustibles_hn.gold.tesis_cap4_detalle_grid
+ORDER BY
+  Combustible,
+  K
+""")
+
+print("Vista creada: v_cap4_grid_search_detalle")
+
+# COMMAND ----------
+
+# DBTITLE 1,Capítulo 6 - SSRC (Reservorio)
+# MAGIC %md
+# MAGIC ## 7. Vistas Capítulo 6 - SSRC (State Space Reservoir Computing)
+
+# COMMAND ----------
+
+# DBTITLE 1,Vista: Comparativa Final Markov vs SSRC vs Ridge
+spark.sql("""
+CREATE OR REPLACE VIEW combustibles_hn.gold.v_cap6_comparativa_final AS
+SELECT
+  Combustible,
+  RMSE_Markov,
+  RMSE_SSRC,
+  RMSE_SSRC_Std,
+  RMSE_Ridge,
+  Delta_Porcentaje,
+  Delta_Solver,
+  DM_Statistic,
+  DM_P_Value,
+  Significativo_005,
+  Mejor_Modelo
+FROM
+  combustibles_hn.gold.tesis_cap6_comparacion_final
+ORDER BY
+  Combustible
+""")
+
+print("Vista creada: v_cap6_comparativa_final")
+
+# COMMAND ----------
+
+# DBTITLE 1,Vista: Predicciones SSRC
+spark.sql("""
+CREATE OR REPLACE VIEW combustibles_hn.gold.v_cap6_predicciones_ssrc AS
+SELECT
+  Combustible,
+  Semana,
+  Precio_Real,
+  Prediccion_Markov,
+  Prediccion_SSRC
+FROM
+  combustibles_hn.gold.tesis_cap6_predicciones_semanales
+ORDER BY
+  Combustible,
+  Semana
+""")
+
+print("Vista creada: v_cap6_predicciones_ssrc")
+
+# COMMAND ----------
+
+# DBTITLE 1,Vista: Hiperparámetros SSRC
+spark.sql("""
+CREATE OR REPLACE VIEW combustibles_hn.gold.v_cap6_hiperparametros_ssrc AS
+SELECT
+  Combustible,
+  D AS Dimensiones_Reservorio,
+  rho AS Radio_Espectral,
+  leak_rate AS Tasa_Fuga,
+  RMSE,
+  RMSE_Ridge
+FROM
+  combustibles_hn.gold.tesis_cap6_best_ssrc
+ORDER BY
+  Combustible
+""")
+
+print("Vista creada: v_cap6_hiperparametros_ssrc")
+
+# COMMAND ----------
+
+# DBTITLE 1,Vista: Realizaciones Múltiples (30 runs)
+spark.sql("""
+CREATE OR REPLACE VIEW combustibles_hn.gold.v_cap6_realizaciones_multiple AS
+SELECT
+  Combustible,
+  Realizacion,
+  RMSE,
+  D AS Dimensiones_Reservorio,
+  rho AS Radio_Espectral,
+  leak_rate AS Tasa_Fuga
+FROM
+  combustibles_hn.gold.tesis_cap6_realizaciones
+ORDER BY
+  Combustible,
+  Realizacion
+""")
+
+print("Vista creada: v_cap6_realizaciones_multiple")
+
+# COMMAND ----------
+
+# DBTITLE 1,Resumen Final
+print("\n=== RESUMEN DE VISTAS CREADAS ===")
+print("\nCapítulo 2 (Alphas): 8 vistas")
+print("  - Histogramas (4): Super, Regular, Diesel, Kerosene")
+print("  - Matriz de correlación (1)")
+print("  - Estadísticas descriptivas (1)")
+print("  - Análisis temporal mensual (1)")
+print("  - Métricas resumen (1)")
+
+print("\nCapítulo 3 (K-Means): 4 vistas")
+print("  - Centroides")
+print("  - Propiedades espectrales")
+print("  - Umbrales")
+print("  - Matrices de transición")
+
+print("\nCapítulo 4 (Markov/NNLS): 6 vistas")
+print("  - Matrices de transición")
+print("  - Hiperparámetros óptimos")
+print("  - Predicciones semanales")
+print("  - RMSE Markov")
+print("  - Comparativa métodos MLE vs NNLS")
+print("  - Detalle grid search")
+
+print("\nCapítulo 6 (SSRC): 4 vistas")
+print("  - Comparativa final (con test Diebold-Mariano)")
+print("  - Predicciones SSRC")
+print("  - Hiperparámetros SSRC")
+print("  - Realizaciones múltiples (30 runs)")
+
+print("\n¡Total: 22 vistas creadas para consumo en Power BI/Tableau!")

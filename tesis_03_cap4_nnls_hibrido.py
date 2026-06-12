@@ -291,6 +291,7 @@ for fuel in combustibles:
 
 # COMMAND ----------
 
+df_thesis_optimals = pd.DataFrame(best_params_results)
 display(df_thesis_optimals)
 
 # COMMAND ----------
@@ -691,6 +692,8 @@ spark.createDataFrame(pd.DataFrame(results_propiedades_espectrales_opt)).write \
 print("✅ gold.tesis_cap4_propiedades_espectrales")
 
 # 8d. Predicciones NNLS
+spark.sql(f"""DROP TABLE IF EXISTS {CATALOG}.gold.tesis_cap4_predicciones_nnls""")
+spark.sql(f"""DROP VIEW IF EXISTS {CATALOG}.gold.tesis_cap4_predicciones_nnls""")
 spark.createDataFrame(pd.DataFrame(results_nnls_opt)).write \
     .mode("overwrite") \
     .option("overwriteSchema", "true") \
@@ -698,6 +701,8 @@ spark.createDataFrame(pd.DataFrame(results_nnls_opt)).write \
 print("✅ gold.tesis_cap4_predicciones_nnls")
 
 # 8e. RMSE Markov base
+spark.sql(f"""DROP TABLE IF EXISTS {CATALOG}.gold.tesis_cap4_rmse_markov_base""")
+spark.sql(f"""DROP VIEW IF EXISTS {CATALOG}.gold.tesis_cap4_rmse_markov_base""")
 spark.createDataFrame(pd.DataFrame(results_markov_rmse_opt)).write \
     .mode("overwrite") \
     .option("overwriteSchema", "true") \
@@ -705,6 +710,8 @@ spark.createDataFrame(pd.DataFrame(results_markov_rmse_opt)).write \
 print("✅ gold.tesis_cap4_rmse_markov_base")
 
 # 8f. Predicciones de precio semanal
+spark.sql(f"""DROP TABLE IF EXISTS {CATALOG}.gold.tesis_cap4_predicciones_precio_semanal""")
+spark.sql(f"""DROP VIEW IF EXISTS {CATALOG}.gold.tesis_cap4_predicciones_precio_semanal""")
 spark.createDataFrame(pd.DataFrame(results_precios_semanales_opt)).write \
     .mode("overwrite") \
     .option("overwriteSchema", "true") \
@@ -712,6 +719,8 @@ spark.createDataFrame(pd.DataFrame(results_precios_semanales_opt)).write \
 print("✅ gold.tesis_cap4_predicciones_precio_semanal")
 
 # 8g. Tabla Comparativa de Rendimiento
+spark.sql(f"""DROP TABLE IF EXISTS {CATALOG}.gold.tesis_cap4_tabla_comparativa""")
+spark.sql(f"""DROP VIEW IF EXISTS {CATALOG}.gold.tesis_cap4_tabla_comparativa""")
 spark.createDataFrame(pd.DataFrame(results_comparativos)).write \
     .mode("overwrite") \
     .option("overwriteSchema", "true") \
@@ -719,6 +728,8 @@ spark.createDataFrame(pd.DataFrame(results_comparativos)).write \
 print("✅ gold.tesis_cap4_tabla_comparativa")
 
 # 8h. Detalle Grid Runs
+spark.sql(f"""DROP TABLE IF EXISTS {CATALOG}.gold.tesis_cap4_detalle_grid""")
+spark.sql(f"""DROP VIEW IF EXISTS {CATALOG}.gold.tesis_cap4_detalle_grid""")
 spark.createDataFrame(pd.DataFrame(grid_runs_all)).write \
     .mode("overwrite") \
     .option("overwriteSchema", "true") \
@@ -726,6 +737,8 @@ spark.createDataFrame(pd.DataFrame(grid_runs_all)).write \
 print("✅ gold.tesis_cap4_detalle_grid")
 
 # 8i. Centroides K-medias del modelo óptimo
+spark.sql(f"""DROP TABLE IF EXISTS {CATALOG}.gold.tesis_cap4_centroides""")
+spark.sql(f"""DROP VIEW IF EXISTS {CATALOG}.gold.tesis_cap4_centroides""")
 spark.createDataFrame(pd.DataFrame(results_centroids_opt)).write \
     .mode("overwrite") \
     .option("overwriteSchema", "true") \

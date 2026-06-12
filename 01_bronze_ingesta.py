@@ -166,8 +166,8 @@ def scrape_anio(anio: int, url: str) -> "pd.DataFrame":
 
 # COMMAND ----------
 
- #%pip install --quiet lxml html5lib beautifulsoup4
- #dbutils.library.restartPython()
+# MAGIC %pip install --quiet lxml html5lib beautifulsoup4
+# MAGIC dbutils.library.restartPython()
 
 # COMMAND ----------
 

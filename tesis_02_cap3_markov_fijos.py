@@ -50,6 +50,7 @@ NORD_PALETTE = {
 }
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 1. Carga de Alphas Óptimos (del Capítulo 2)
 
@@ -63,6 +64,7 @@ print(f"Columnas disponibles: {list(df_alphas.columns)}")
 print(f"Total registros cargados: {len(df_alphas)}")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 2. Funciones de Discretización y Estimación con Errores Estándar e Intervalos de Confianza
 
@@ -117,6 +119,7 @@ def estimate_transition_matrix_with_errors(states, k=4):
     return P, counts, col_sums, std_errors
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 3. Procesamiento, Análisis Espectral y Generación de Gráficos
 
@@ -308,6 +311,7 @@ for fuel in combustibles:
     print(f"Grafico 3 guardado en: {chart3_path}")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 4. Guardar Resultados en Capa Gold
 
@@ -321,6 +325,7 @@ spark.createDataFrame(pd.DataFrame(resultados_centroides)).write \
 print("✅ gold.tesis_cap3_centroides")
 
 # 4b. Definición de Umbrales Fijos
+spark.sql(f"DROP VIEW IF EXISTS {CATALOG}.gold.tesis_cap3_umbrales")
 spark.createDataFrame(pd.DataFrame(resultados_umbrales)).write \
     .mode("overwrite") \
     .option("overwriteSchema", "true") \
@@ -328,6 +333,7 @@ spark.createDataFrame(pd.DataFrame(resultados_umbrales)).write \
 print("✅ gold.tesis_cap3_umbrales")
 
 # 4c. Matrices de Transición con Errores Estándar (Umbrales Fijos)
+spark.sql(f"DROP VIEW IF EXISTS {CATALOG}.gold.tesis_cap3_matrices_transicion")
 spark.createDataFrame(pd.DataFrame(resultados_matrices)).write \
     .mode("overwrite") \
     .option("overwriteSchema", "true") \
@@ -335,6 +341,7 @@ spark.createDataFrame(pd.DataFrame(resultados_matrices)).write \
 print("✅ gold.tesis_cap3_matrices_transicion")
 
 # 4d. Alphas con Estados (Umbrales Fijos registrados en la columna '_State')
+spark.sql(f"DROP VIEW IF EXISTS {CATALOG}.gold.tesis_alphas_con_estados")
 spark.createDataFrame(df_alphas).write \
     .mode("overwrite") \
     .option("overwriteSchema", "true") \
@@ -342,6 +349,7 @@ spark.createDataFrame(df_alphas).write \
 print("✅ gold.tesis_alphas_con_estados")
 
 # 4e. Propiedades Espectrales
+spark.sql(f"DROP VIEW IF EXISTS {CATALOG}.gold.tesis_cap3_propiedades_espectrales")
 spark.createDataFrame(pd.DataFrame(resultados_propiedades_espectrales)).write \
     .mode("overwrite") \
     .option("overwriteSchema", "true") \
@@ -349,9 +357,10 @@ spark.createDataFrame(pd.DataFrame(resultados_propiedades_espectrales)).write \
 print("✅ gold.tesis_cap3_propiedades_espectrales")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 5. Gráfico Teórico del Tamaño Efectivo de Muestra (W_eff)
-# MAGIC 
+# MAGIC
 # MAGIC Generamos la ilustración matemática de la tesis que muestra cómo $W_{\text{eff}} = \frac{1-\lambda^W}{1-\lambda}$ decrece conforme $\lambda$ se reduce, para ventanas $W \in \{12, 26, 52\}$.
 
 # COMMAND ----------
